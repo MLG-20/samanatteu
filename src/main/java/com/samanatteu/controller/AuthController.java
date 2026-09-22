@@ -4,6 +4,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.auth.LoginDTO;
+import com.samanatteu.dto.auth.RefreshRequestDTO;
+import com.samanatteu.dto.auth.TokenDTO;
 import com.samanatteu.service.auth.AuthService;
 
 import jakarta.validation.Valid;
@@ -22,7 +24,13 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<String> login(@Valid @RequestBody LoginDTO loginDTO) {
+    public ResponseEntity<TokenDTO> login(@Valid @RequestBody LoginDTO loginDTO) {
         return ResponseEntity.ok(authService.login(loginDTO));
     }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<TokenDTO> refresh(@Valid @RequestBody RefreshRequestDTO refreshRequestDTO) {
+        return ResponseEntity.ok(authService.refresh(refreshRequestDTO));
+    }
+
 }

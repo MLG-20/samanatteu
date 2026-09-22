@@ -24,7 +24,6 @@ public class CreationUtilisateurDTO {
     private String telephone;
 
     @Email
-    @NotBlank 
     private String email;
 
     @NotBlank

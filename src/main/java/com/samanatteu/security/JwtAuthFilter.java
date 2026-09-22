@@ -44,21 +44,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             // "Bearer " fait 7 caractères -> substring(7) garde uniquement le vrai token.
             String token = autHeader.substring(7);
 
-            // try/catch : extractEmail lève une JwtException si le token est invalide
+            // try/catch : extractTelephone lève une JwtException si le token est invalide
             // (signature falsifiée, expiré, mal formé). Sans ce try/catch, l'exception
             // remonterait jusqu'au conteneur, court-circuiterait GlobalExceptionHandler
             // (qui ne voit que les controllers, pas les filtres) et donnerait un 403 vide.
             try {
-                // Vérifie la signature + l'expiration (dans JwtUtil), et renvoie l'email
+                // Vérifie la signature + l'expiration (dans JwtUtil), et renvoie le téléphone
                 // contenu dans le token si tout est valide.
-                String email = jwtUtil.extractEmail(token);
+                String telephone = jwtUtil.extractTelephone(token);
 
                 // Construit l'objet qui dit à Spring Security "cette requête est authentifiée".
-                // 1er argument : l'identité (l'email) 2e : le mot de passe (null, pas besoin,
+                // 1er argument : l'identité (le téléphone) 2e : le mot de passe (null, pas besoin,
                 // on a déjà vérifié via le token) 3e : les rôles/autorités (vide pour
                 // l'instant, géré plus tard à l'étape autorisation par rôle).
                 SimpleGrantedAuthority authorite = new SimpleGrantedAuthority("ROLE_" + jwtUtil.extractRole(token));
-                UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(email,
+                UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(telephone,
                         null, List.of(authorite));
 
                 // Dépose l'authentification dans le contexte de sécurité de la requête en

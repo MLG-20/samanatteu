@@ -13,6 +13,7 @@ import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.Utilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.EmailDejaUtiliseException;
+import com.samanatteu.exception.TelephoneDejaUtiliseException;
 import com.samanatteu.repository.UtilisateurRepository;
 
 @Service
@@ -48,6 +49,9 @@ public class UtilisateurService {
             // client.
             throw new EmailDejaUtiliseException(dto.getEmail());
         }
+        if (utilisateurRepository.existsByTelephone(dto.getTelephone())) {
+            throw new TelephoneDejaUtiliseException(dto.getTelephone());
+        }
         Utilisateur utilisateur = new Utilisateur();
         utilisateur.setNom(dto.getNom());
         utilisateur.setPrenom(dto.getPrenom());
@@ -71,20 +75,21 @@ public class UtilisateurService {
         return utilisateurRepository.findById(id).map(utilisateurExsitant -> {
 
             // Authentication = l'objet déposé par JwtAuthFilter dans SecurityContextHolder
-            // pour la requête en cours ; il contient l'identité (email) ET les rôles
+            // pour la requête en cours ; il contient l'identité (téléphone) ET les rôles
             // (autorités) de la personne qui a envoyé le token JWT.
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            // getName() = le principal du token, ici l'email (1er argument du
-            // UsernamePasswordAuthenticationToken construit dans JwtAuthFilter).
-            String emailConnect = auth.getName();
+            // getName() = le principal du token, ici le téléphone (1er argument du
+            // UsernamePasswordAuthenticationToken construit dans JwtAuthFilter) — identifiant
+            // choisi car toujours présent (l'email, lui, est optionnel depuis la v1.1).
+            String telephoneConnect = auth.getName();
             // getAuthorities() = la liste des rôles (ex: "ROLE_ADMIN", "ROLE_MEMBRE").
             // anyMatch(...) : true si AU MOINS UNE autorité de la liste vaut "ROLE_ADMIN".
             boolean estAdmin = auth.getAuthorities().stream()
                     .anyMatch(autorite -> autorite.getAuthority().equals("ROLE_ADMIN"));
             // Règle d'autorisation "propre profil" : on refuse SEULEMENT si ce n'est ni
-            // le propriétaire du compte (email différent) NI un admin (qui peut tout
+            // le propriétaire du compte (téléphone différent) NI un admin (qui peut tout
             // modifier). Un ADMIN ou le propriétaire lui-même passent sans exception.
-            if (!emailConnect.equals(utilisateurExsitant.getEmail()) && !estAdmin) {
+            if (!telephoneConnect.equals(utilisateurExsitant.getTelephone()) && !estAdmin) {
                 throw new AccesRefuseException();
             }
             // utilisateurExsitant = l'entité déjà en base (trouvée par findById).

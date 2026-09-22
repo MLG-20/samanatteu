@@ -27,6 +27,9 @@ public class JwtUtil {
     @Value("${jwt.expiration-ms}")
     long expirationMs;
 
+    @Value("${jwt.refresh-expiration-ms}")
+    long refreshExpirationMs;
+
     // La clé cryptographique utilisée pour signer/vérifier les tokens.
     // Pas initialisée ici directement : au moment de la construction de l'objet,
     // "secret"
@@ -53,7 +56,7 @@ public class JwtUtil {
         return Jwts.builder()
                 // subject : le "propriétaire" du token, ici son email (identifiant de
                 // connexion).
-                .subject(utilisateur.getEmail())
+                .subject(utilisateur.getTelephone())
                 // claim : donnée custom ajoutée au payload, ici le rôle (utile plus tard pour
                 // restreindre certaines routes par rôle).
                 .claim("role", utilisateur.getRole())
@@ -69,9 +72,19 @@ public class JwtUtil {
                 .compact();
     }
 
+    public String generateRefreshToken(Utilisateur utilisateur) {
+        return Jwts.builder()
+                .subject(utilisateur.getTelephone())
+                .claim("type", "refresh")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
+                .signWith(key)
+                .compact();
+    }
+
     // Lit un token reçu (ex: dans le header Authorization d'une requête) et renvoie
     // l'email qu'il contient, à condition que le token soit valide.
-    public String extractEmail(String token) {
+    public String extractTelephone(String token) {
         return Jwts.parser()
                 // verifyWith : indique avec quelle clé vérifier la signature -> doit être
                 // la MÊME clé que celle utilisée pour signer (signWith) dans generateToken.
@@ -102,5 +115,14 @@ public class JwtUtil {
                 // Contrairement à getSubject(), il n'y a pas de méthode dédiée pour "role"
                 // car c'est un claim que nous avons inventé, d'où cette méthode générale.
                 .get("role", String.class);
+    }
+
+    public  String extractType(String token){
+        return Jwts.parser()
+        .verifyWith(key)
+        .build()
+        .parseSignedClaims(token)
+        .getPayload()
+        .get("type", String.class);
     }
 }
