@@ -5,6 +5,8 @@ spring:
     url: jdbc:postgresql://localhost:5432/samanatteu
     username: samanatteu_user
     password: ${DB_PASSWORD}
+  config:
+    import: optional:file:.env[.properties]
   jpa:
     hibernate:
       ddl-auto: validate
