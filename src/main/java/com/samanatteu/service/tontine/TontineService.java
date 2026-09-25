@@ -3,24 +3,31 @@ package com.samanatteu.service.tontine;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.Tontine;
-import com.samanatteu.exception.GestionnaireObligatoireException;
+import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.repository.TontineRepository;
+import com.samanatteu.repository.UtilisateurRepository;
 
 @Service
 public class TontineService {
     private final TontineRepository tontineRepository;
+    private final UtilisateurRepository utilisateurRepository;
 
-    public TontineService(TontineRepository tontineRepository) {
+    public TontineService(TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository) {
         this.tontineRepository = tontineRepository;
+        this.utilisateurRepository = utilisateurRepository;
     }
 
     // Lister
     public List<TontineDTO> listTontine() {
-        return tontineRepository.findAll() // 1. List<Tontine> brute depuis la base (avec motDePasse)
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return tontineRepository.findByGestionnaireTelephone(auth.getName()) // 1. List<Tontine> brute depuis la base (avec motDePasse)
                 .stream() // 2. transforme la liste en flux traitable élément par élément
                 .map(this::convertiTontineDTO) // 3. applique la conversion à CHAQUE Tontine -> TontineDTO
                                                // (sans motDePasse)
@@ -29,10 +36,10 @@ public class TontineService {
 
     // créer
     public TontineDTO createTontine(Tontine tontine) {
-        //Vérification si le champs gestionnaire est vide
-        if (tontine.getGestionnaire() == null) {
-            throw new GestionnaireObligatoireException();
-        }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Utilisateur gestionnaire = utilisateurRepository.findByTelephone(auth.getName())
+        .orElseThrow(() -> new AccesRefuseException());
+        tontine.setGestionnaire(gestionnaire);
         Tontine enregistre = tontineRepository.save(tontine);
         return convertiTontineDTO(enregistre);
     }
@@ -44,6 +51,7 @@ public class TontineService {
         // .map(...) ne s'exécute QUE si l'Optional est rempli — sinon il reste vide tel
         // quel (pas de NullPointerException).
         return tontineRepository.findById(id).map(tontineExsitant -> {
+            verifierProprietaire(tontineExsitant);
             // tontineExsitant = l'entité déjà en base (trouvée par findById).
             // tontineModifier = les nouvelles valeurs envoyées par le client (paramètre
             // de la méthode).
@@ -72,11 +80,20 @@ public class TontineService {
 
     // Delete
     public boolean deleteTontine(Long id) {
-        if (tontineRepository.existsById(id)) {
+        Optional<Tontine> tontine = tontineRepository.findById(id);
+        if (tontine.isPresent()) {
+            verifierProprietaire(tontine.get());
             tontineRepository.deleteById(id);
             return true;
         }
         return false;
+    }
+
+    private void verifierProprietaire(Tontine tontine) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!auth.getName().equals(tontine.getGestionnaire().getTelephone())) {
+            throw new AccesRefuseException();
+        }
     }
 
     private TontineDTO convertiTontineDTO(Tontine tontine) {

@@ -1,7 +1,5 @@
 package com.samanatteu.config;
 
-
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -43,10 +41,18 @@ public class SecurityConfig {
                                 // ci-dessus exige au moins un token valide (peu importe le rôle).
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                                                .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll()
                                                 .requestMatchers(HttpMethod.POST, "/utilisateur").permitAll()
                                                 .requestMatchers(HttpMethod.GET, "/utilisateur").hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.PUT, "/utilisateur/**").authenticated()
                                                 .requestMatchers(HttpMethod.DELETE, "/utilisateur/**").hasRole("ADMIN")
+                                                .requestMatchers(HttpMethod.POST, "/tontine").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.GET, "/tontine").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.PUT, "/tontine/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.DELETE, "/tontine/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.POST, "/participation").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.PUT, "/participation/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.DELETE, "/participation/**").hasRole("GESTIONNAIRE")
                                                 .anyRequest().authenticated())
                                 // Insère notre filtre JWT AVANT le filtre standard d'authentification
                                 // par mot de passe, pour qu'il soit exécuté sur chaque requête et
