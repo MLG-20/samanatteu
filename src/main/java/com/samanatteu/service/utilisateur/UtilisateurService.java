@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.enums.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.EmailDejaUtiliseException;
 import com.samanatteu.exception.TelephoneDejaUtiliseException;
@@ -38,11 +39,21 @@ public class UtilisateurService {
 
     // créer
     public UtilisateurDTO createUtilisateur(CreationUtilisateurDTO dto) {
+
+        if (dto.getRole() == RoleUtilisateur.ADMIN) {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            boolean estAdmin = auth.getAuthorities().stream()
+                    .anyMatch(autorite -> autorite.getAuthority().equals("ROLE_ADMIN"));
+            if (!estAdmin) {
+                throw new AccesRefuseException();
+            }
+        }
         // AVANT de sauvegarder : on vérifie si un autre utilisateur a déjà cet email en
         // base.
         // existsByEmail renvoie juste un boolean (true/false), pas l'utilisateur
         // lui-même.
-        if (utilisateurRepository.existsByEmail(dto.getEmail())) {
+        if (dto.getEmail() != null && !dto.getEmail().isBlank()
+                && utilisateurRepository.existsByEmail(dto.getEmail())) {
             // On lève l'exception : ça arrête immédiatement la méthode ici,
             // les lignes save()/return en dessous ne sont jamais exécutées.
             // C'est le GlobalExceptionHandler qui va l'attraper et renvoyer le 409 au
@@ -79,7 +90,8 @@ public class UtilisateurService {
             // (autorités) de la personne qui a envoyé le token JWT.
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             // getName() = le principal du token, ici le téléphone (1er argument du
-            // UsernamePasswordAuthenticationToken construit dans JwtAuthFilter) — identifiant
+            // UsernamePasswordAuthenticationToken construit dans JwtAuthFilter) —
+            // identifiant
             // choisi car toujours présent (l'email, lui, est optionnel depuis la v1.1).
             String telephoneConnect = auth.getName();
             // getAuthorities() = la liste des rôles (ex: "ROLE_ADMIN", "ROLE_MEMBRE").
