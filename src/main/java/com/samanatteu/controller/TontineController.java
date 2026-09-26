@@ -44,6 +44,27 @@ public class TontineController {
         return tontineService.createTontine(tontine);
     }
 
+    @PostMapping("/{id}/activer")
+    public ResponseEntity<TontineDTO> activerTontine(@PathVariable Long id) {
+        return tontineService.activerTontine(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/{id}/suspendre")
+    public ResponseEntity<TontineDTO> suspendreTontine(@PathVariable Long id) {
+        return tontineService.suspendreTontine(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/{id}/cloturer")
+    public ResponseEntity<TontineDTO> cloturerTontine(@PathVariable Long id) {
+        return tontineService.cloturerTontine(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<TontineDTO> updateTontine(@PathVariable Long id, @RequestBody Tontine TontineModifier) {

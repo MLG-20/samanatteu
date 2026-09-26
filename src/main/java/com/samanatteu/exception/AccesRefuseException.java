@@ -7,6 +7,6 @@ import org.springframework.http.HttpStatus;
 // profil" ajoutée dans updateUtilisateur).
 public class AccesRefuseException extends SamanatteuException {
     public AccesRefuseException(){
-        super("Vous n'avez pas le droit de modifier ce profil.", HttpStatus.FORBIDDEN); // 403
+        super("Vous n'avez pas le droit d'effectuer cette action sur cette ressource.", HttpStatus.FORBIDDEN); // 403
     }
 }

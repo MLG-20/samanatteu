@@ -1,5 +1,6 @@
 package com.samanatteu.service.tontine;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -10,7 +11,10 @@ import org.springframework.stereotype.Service;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
+import com.samanatteu.exception.TontineNonModifiableException;
+import com.samanatteu.exception.TransitionStatutInvalideException;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
 
@@ -27,7 +31,8 @@ public class TontineService {
     // Lister
     public List<TontineDTO> listTontine() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return tontineRepository.findByGestionnaireTelephone(auth.getName()) // 1. List<Tontine> brute depuis la base (avec motDePasse)
+        return tontineRepository.findByGestionnaireTelephone(auth.getName()) // 1. List<Tontine> brute depuis la base
+                                                                             // (avec motDePasse)
                 .stream() // 2. transforme la liste en flux traitable élément par élément
                 .map(this::convertiTontineDTO) // 3. applique la conversion à CHAQUE Tontine -> TontineDTO
                                                // (sans motDePasse)
@@ -38,8 +43,9 @@ public class TontineService {
     public TontineDTO createTontine(Tontine tontine) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         Utilisateur gestionnaire = utilisateurRepository.findByTelephone(auth.getName())
-        .orElseThrow(() -> new AccesRefuseException());
+                .orElseThrow(() -> new AccesRefuseException());
         tontine.setGestionnaire(gestionnaire);
+        tontine.setStatut(StatutTontine.EN_ATTENTE);
         Tontine enregistre = tontineRepository.save(tontine);
         return convertiTontineDTO(enregistre);
     }
@@ -52,6 +58,10 @@ public class TontineService {
         // quel (pas de NullPointerException).
         return tontineRepository.findById(id).map(tontineExsitant -> {
             verifierProprietaire(tontineExsitant);
+
+            if (tontineExsitant.getStatut() != StatutTontine.EN_ATTENTE) {
+                throw new TontineNonModifiableException(tontineExsitant.getStatut().toString());
+            }
             // tontineExsitant = l'entité déjà en base (trouvée par findById).
             // tontineModifier = les nouvelles valeurs envoyées par le client (paramètre
             // de la méthode).
@@ -62,11 +72,6 @@ public class TontineService {
             tontineExsitant.setNbCycles(tontineModifier.getNbCycles());
             tontineExsitant.setDescription(tontineModifier.getDescription());
             tontineExsitant.setJourCotisation(tontineModifier.getJourCotisation());
-            tontineExsitant.setCreatedAt(tontineModifier.getCreatedAt());
-            tontineExsitant.setUpdatedAt(tontineModifier.getUpdatedAt());
-            tontineExsitant.setStatut(tontineModifier.getStatut());
-            tontineExsitant.setGestionnaire(tontineModifier.getGestionnaire());
-
             // save() persiste les changements en base ET renvoie l'entité Tontine à jour
             // (avec motDePasse).
             Tontine enregistre = tontineRepository.save(tontineExsitant);
@@ -94,6 +99,29 @@ public class TontineService {
         if (!auth.getName().equals(tontine.getGestionnaire().getTelephone())) {
             throw new AccesRefuseException();
         }
+    }
+
+    public Optional<TontineDTO> activerTontine(Long id) {
+        return changerStatut(id, StatutTontine.ACTIVE, StatutTontine.EN_ATTENTE, StatutTontine.SUSPENDUE);
+    }
+
+    public Optional<TontineDTO> suspendreTontine(Long id) {
+        return changerStatut(id, StatutTontine.SUSPENDUE, StatutTontine.ACTIVE);
+    }
+
+    public Optional<TontineDTO> cloturerTontine(Long id) {
+        return changerStatut(id, StatutTontine.TERMINEE, StatutTontine.ACTIVE);
+    }
+
+    private Optional<TontineDTO> changerStatut(Long id, StatutTontine nouveau, StatutTontine... autorises) {
+        return tontineRepository.findById(id).map(tontine -> {
+            verifierProprietaire(tontine);
+            if (!Arrays.asList(autorises).contains(tontine.getStatut())) {
+                throw new TransitionStatutInvalideException(tontine.getStatut(), nouveau);
+            }
+            tontine.setStatut(nouveau);
+            return convertiTontineDTO(tontineRepository.save(tontine));
+        });
     }
 
     private TontineDTO convertiTontineDTO(Tontine tontine) {
