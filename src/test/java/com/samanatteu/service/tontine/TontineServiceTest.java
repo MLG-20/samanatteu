@@ -22,12 +22,14 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.samanatteu.dto.tontine.TontineDTO;
+import com.samanatteu.entity.Participation;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
 import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.TontineNonModifiableException;
 import com.samanatteu.exception.TransitionStatutInvalideException;
+import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
 
@@ -38,6 +40,9 @@ class TontineServiceTest {
     private TontineRepository tontineRepository;
     @Mock
     private UtilisateurRepository utilisateurRepository;
+    // Sert à la lecture "mes tontines" du MEMBRE (les tontines où il a une participation).
+    @Mock
+    private ParticipationRepository participationRepository;
 
     @InjectMocks
     private TontineService tontineService;
@@ -51,6 +56,12 @@ class TontineServiceTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(telephone, null,
                         List.of(new SimpleGrantedAuthority("ROLE_GESTIONNAIRE"))));
+    }
+
+    private void connecterCommeMembre(String telephone) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(telephone, null,
+                        List.of(new SimpleGrantedAuthority("ROLE_MEMBRE"))));
     }
 
     @Test
@@ -169,6 +180,28 @@ class TontineServiceTest {
         // Et on n'a JAMAIS demandé "toutes les tontines" au repository : c'est ce verify qui
         // attrape la régression si quelqu'un remet findAll() dans listTontine.
         verify(tontineRepository, never()).findAll();
+    }
+
+    // Lecture "mes tontines" du MEMBRE : les tontines de SES participations, et pas celles d'un gestionnaire
+    // (findByGestionnaireTelephone) ni "toutes" (findAll).
+    @Test
+    void listTontine_membreVoitLesTontinesOuIlParticipe() {
+        connecterCommeMembre("771234566");
+        Utilisateur gestionnaire = new Utilisateur();
+        gestionnaire.setId(18L);
+        Tontine tontine = new Tontine();
+        tontine.setId(6L);
+        tontine.setGestionnaire(gestionnaire);
+        Participation participation = new Participation();
+        participation.setTontine(tontine);
+        when(participationRepository.findByMembreTelephone("771234566")).thenReturn(List.of(participation));
+
+        List<TontineDTO> resultat = tontineService.listTontine();
+
+        assertEquals(1, resultat.size());
+        assertEquals(6L, resultat.get(0).getId());
+        verify(tontineRepository, never()).findAll();
+        verify(tontineRepository, never()).findByGestionnaireTelephone(any());
     }
 
     // ---------------------------------------------------------------------------------------

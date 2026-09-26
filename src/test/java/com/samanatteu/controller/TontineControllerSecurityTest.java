@@ -71,10 +71,13 @@ class TontineControllerSecurityTest {
 
     @Test
     @WithMockUser(username = "771234566", roles = "MEMBRE")
-    void listeDesTontines_parUnMembre_donne403() throws Exception {
-        // Le cas MEMBRE est refusé par défaut, tant que "mes tontines de membre" n'est pas construit.
+    void listeDesTontines_parUnMembre_donne200() throws Exception {
+        // Un membre peut lister "ses" tontines (celles où il participe) : le filtrage est fait par le
+        // service (testé dans TontineServiceTest), ici on vérifie seulement que SecurityConfig le laisse passer.
+        when(tontineService.listTontine()).thenReturn(List.of());
+
         mockMvc.perform(get("/tontine"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     @Test
