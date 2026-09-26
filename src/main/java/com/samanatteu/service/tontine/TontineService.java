@@ -9,12 +9,14 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.tontine.TontineDTO;
+import com.samanatteu.entity.Participation;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
 import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.TontineNonModifiableException;
 import com.samanatteu.exception.TransitionStatutInvalideException;
+import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
 
@@ -22,18 +24,29 @@ import com.samanatteu.repository.UtilisateurRepository;
 public class TontineService {
     private final TontineRepository tontineRepository;
     private final UtilisateurRepository utilisateurRepository;
+    private final ParticipationRepository participationRepository;
 
-    public TontineService(TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository) {
+    public TontineService(TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository,
+            ParticipationRepository participationRepository) {
         this.tontineRepository = tontineRepository;
         this.utilisateurRepository = utilisateurRepository;
+        this.participationRepository = participationRepository;
     }
 
     // Lister
     public List<TontineDTO> listTontine() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return tontineRepository.findByGestionnaireTelephone(auth.getName()) // 1. List<Tontine> brute depuis la base
-                                                                             // (avec motDePasse)
-                .stream() // 2. transforme la liste en flux traitable élément par élément
+        boolean estGestionnaire = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_GESTIONNAIRE"));
+
+        List<Tontine> tontines = estGestionnaire
+                ? tontineRepository.findByGestionnaireTelephone(auth.getName())
+                : participationRepository.findByMembreTelephone(auth.getName())
+                        .stream()
+                        .map(Participation::getTontine)
+                        .toList();
+
+        return tontines.stream()
                 .map(this::convertiTontineDTO) // 3. applique la conversion à CHAQUE Tontine -> TontineDTO
                                                // (sans motDePasse)
                 .toList(); // 4. reconstitue une vraie List<TontineDTO> à partir du flux

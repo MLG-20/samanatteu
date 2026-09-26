@@ -30,7 +30,7 @@ public class ParticipationController {
     // --- Lister ---
     @GetMapping
     public List<ParticipationDTO> listParticipation() {
-        return participationService.listNotification();
+        return participationService.listParticipation();
     }
 
     // --- Créer ---
