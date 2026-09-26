@@ -7,8 +7,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -18,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.samanatteu.config.SecurityConfig;
+import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.security.JwtAccessDeniedHandler;
 import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
@@ -111,5 +115,70 @@ class TontineControllerSecurityTest {
 
         mockMvc.perform(delete("/tontine/6"))
                 .andExpect(status().isNoContent());
+    }
+
+    // --- Routes de changement de statut : POST /tontine/{id}/activer | suspendre | cloturer ---
+    // Même règle pour les trois (POST /tontine/** réservé au GESTIONNAIRE) : on les teste toutes.
+
+    @ParameterizedTest
+    @ValueSource(strings = { "activer", "suspendre", "cloturer" })
+    @WithMockUser(username = "770000099", roles = "ADMIN")
+    void changementDeStatut_parUnAdmin_donne403(String action) throws Exception {
+        // L'admin de la plateforme ne pilote pas les tontines des gestionnaires.
+        mockMvc.perform(post("/tontine/6/" + action))
+                .andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "activer", "suspendre", "cloturer" })
+    @WithMockUser(username = "771234566", roles = "MEMBRE")
+    void changementDeStatut_parUnMembre_donne403(String action) throws Exception {
+        mockMvc.perform(post("/tontine/6/" + action))
+                .andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "activer", "suspendre", "cloturer" })
+    void changementDeStatut_sansToken_donne401(String action) throws Exception {
+        mockMvc.perform(post("/tontine/6/" + action))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void activerUneTontine_parUnGestionnaire_donne200() throws Exception {
+        // Le faux service dit "activée" : le contrôleur répond 200 avec le DTO.
+        when(tontineService.activerTontine(6L)).thenReturn(Optional.of(new TontineDTO()));
+
+        mockMvc.perform(post("/tontine/6/activer"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void suspendreUneTontine_parUnGestionnaire_donne200() throws Exception {
+        when(tontineService.suspendreTontine(6L)).thenReturn(Optional.of(new TontineDTO()));
+
+        mockMvc.perform(post("/tontine/6/suspendre"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void cloturerUneTontine_parUnGestionnaire_donne200() throws Exception {
+        when(tontineService.cloturerTontine(6L)).thenReturn(Optional.of(new TontineDTO()));
+
+        mockMvc.perform(post("/tontine/6/cloturer"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void activerUneTontine_inexistante_donne404() throws Exception {
+        // Le faux service répond "introuvable" (Optional vide) : le contrôleur répond 404.
+        when(tontineService.activerTontine(99L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/tontine/99/activer"))
+                .andExpect(status().isNotFound());
     }
 }

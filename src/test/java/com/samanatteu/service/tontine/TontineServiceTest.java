@@ -24,7 +24,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
+import com.samanatteu.exception.TontineNonModifiableException;
+import com.samanatteu.exception.TransitionStatutInvalideException;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
 
@@ -166,6 +169,168 @@ class TontineServiceTest {
         // Et on n'a JAMAIS demandé "toutes les tontines" au repository : c'est ce verify qui
         // attrape la régression si quelqu'un remet findAll() dans listTontine.
         verify(tontineRepository, never()).findAll();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Cycle de vie du statut (EN_ATTENTE -> ACTIVE <-> SUSPENDUE, ACTIVE -> TERMINEE)
+    // ---------------------------------------------------------------------------------------
+
+    // Fabrique une tontine "déjà en base" appartenant à 770000101 (id 18) avec le statut voulu.
+    // Le gestionnaire a un id car convertiTontineDTO lit getGestionnaire().getId().
+    private Tontine tontineEnBase(StatutTontine statut) {
+        Utilisateur proprietaire = new Utilisateur();
+        proprietaire.setId(18L);
+        proprietaire.setTelephone("770000101");
+        Tontine tontine = new Tontine();
+        tontine.setGestionnaire(proprietaire);
+        tontine.setStatut(statut);
+        return tontine;
+    }
+
+    // Le client envoie "statut: TERMINEE" dans son JSON : le serveur doit l'ignorer et imposer EN_ATTENTE.
+    @Test
+    void createTontine_forceLeStatutEnAttente() {
+        Utilisateur a = new Utilisateur();
+        a.setId(18L);
+        a.setTelephone("770000101");
+        when(utilisateurRepository.findByTelephone("770000101")).thenReturn(Optional.of(a));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Tontine demande = new Tontine();
+        demande.setStatut(StatutTontine.TERMINEE);
+
+        TontineDTO resultat = tontineService.createTontine(demande);
+
+        assertEquals(StatutTontine.EN_ATTENTE, resultat.getStatut());
+    }
+
+    // Règle "modifiable seulement en EN_ATTENTE" : une tontine ACTIVE est refusée, et rien n'est enregistré.
+    @Test
+    void updateTontine_refuseSiLaTontineEstActive() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.ACTIVE)));
+        connecterCommeGestionnaire("770000101");
+
+        Tontine nouvellesValeurs = new Tontine();
+        nouvellesValeurs.setNom("Nouveau nom");
+
+        assertThrows(TontineNonModifiableException.class,
+                () -> tontineService.updateTontine(6L, nouvellesValeurs));
+        verify(tontineRepository, never()).save(any());
+    }
+
+    // Le client tente de changer le statut et le gestionnaire via le PUT : les deux doivent être ignorés.
+    @Test
+    void updateTontine_neChangeNiLeStatutNiLeGestionnaire() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Utilisateur b = new Utilisateur();
+        b.setId(19L);
+        Tontine nouvellesValeurs = new Tontine();
+        nouvellesValeurs.setNom("Nouveau nom");
+        nouvellesValeurs.setStatut(StatutTontine.TERMINEE);
+        nouvellesValeurs.setGestionnaire(b);
+
+        TontineDTO resultat = tontineService.updateTontine(6L, nouvellesValeurs).get();
+
+        // Le nom (champ modifiable) change, mais pas le statut ni le gestionnaire.
+        assertEquals("Nouveau nom", resultat.getNom());
+        assertEquals(StatutTontine.EN_ATTENTE, resultat.getStatut());
+        assertEquals(18L, resultat.getGestionnaireId());
+    }
+
+    @Test
+    void activerTontine_passeDeEnAttenteAActive() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TontineDTO resultat = tontineService.activerTontine(6L).get();
+
+        assertEquals(StatutTontine.ACTIVE, resultat.getStatut());
+    }
+
+    // La reprise : une tontine suspendue peut être réactivée.
+    @Test
+    void activerTontine_reprendUneTontineSuspendue() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.SUSPENDUE)));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TontineDTO resultat = tontineService.activerTontine(6L).get();
+
+        assertEquals(StatutTontine.ACTIVE, resultat.getStatut());
+    }
+
+    // TERMINEE est un état final : on ne ressuscite pas une tontine terminée.
+    @Test
+    void activerTontine_refuseUneTontineTerminee() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.TERMINEE)));
+        connecterCommeGestionnaire("770000101");
+
+        assertThrows(TransitionStatutInvalideException.class, () -> tontineService.activerTontine(6L));
+        verify(tontineRepository, never()).save(any());
+    }
+
+    @Test
+    void suspendreTontine_passeDeActiveASuspendue() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.ACTIVE)));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TontineDTO resultat = tontineService.suspendreTontine(6L).get();
+
+        assertEquals(StatutTontine.SUSPENDUE, resultat.getStatut());
+    }
+
+    @Test
+    void suspendreTontine_refuseUneTontineEnAttente() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
+        connecterCommeGestionnaire("770000101");
+
+        assertThrows(TransitionStatutInvalideException.class, () -> tontineService.suspendreTontine(6L));
+        verify(tontineRepository, never()).save(any());
+    }
+
+    @Test
+    void cloturerTontine_passeDeActiveATerminee() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.ACTIVE)));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TontineDTO resultat = tontineService.cloturerTontine(6L).get();
+
+        assertEquals(StatutTontine.TERMINEE, resultat.getStatut());
+    }
+
+    @Test
+    void cloturerTontine_refuseUneTontineEnAttente() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
+        connecterCommeGestionnaire("770000101");
+
+        assertThrows(TransitionStatutInvalideException.class, () -> tontineService.cloturerTontine(6L));
+        verify(tontineRepository, never()).save(any());
+    }
+
+    // Un autre gestionnaire (770000102) ne peut pas changer le statut de la tontine de 770000101.
+    @Test
+    void activerTontine_refuseSiPasProprietaire() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
+        connecterCommeGestionnaire("770000102");
+
+        assertThrows(AccesRefuseException.class, () -> tontineService.activerTontine(6L));
+        verify(tontineRepository, never()).save(any());
+    }
+
+    // Tontine inexistante : Optional vide (le contrôleur en fera un 404), pas d'exception.
+    @Test
+    void activerTontine_renvoieVideSiLaTontineNExistePas() {
+        when(tontineRepository.findById(99L)).thenReturn(Optional.empty());
+        connecterCommeGestionnaire("770000101");
+
+        assertTrue(tontineService.activerTontine(99L).isEmpty());
     }
 
 }
