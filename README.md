@@ -25,7 +25,7 @@ cycles, les cotisations, les tirages et les prêts.
 |---|---|---|
 | `ADMIN` | le propriétaire de la plateforme | gérer les comptes utilisateurs. **Ne peut ni lire ni modifier le contenu des tontines** des gestionnaires (frontière entre les données de chaque client). |
 | `GESTIONNAIRE` | l'organisateur d'une tontine | créer et piloter **ses** tontines et leurs participations |
-| `MEMBRE` | un participant | consulter ce qui le concerne (en cours de construction) |
+| `MEMBRE` | un participant | consulter les tontines où il participe et ses participations |
 
 ## Stack technique
 
@@ -136,13 +136,30 @@ EN_ATTENTE ──activer──▶ ACTIVE ──suspendre──▶ SUSPENDUE
 
 Le statut ne se modifie que par ces actions : un `statut` envoyé dans un `POST` ou un `PUT` est ignoré.
 
+### Participations (implémenté, testé)
+
+Une participation inscrit un membre à une tontine avec un nombre de parts.
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `POST` | `/participation` | propriétaire de la tontine | inscrit un membre (`{"membre":{"id":…},"tontine":{"id":…},"nombreParts":…}`) |
+| `GET` | `/participation` | `GESTIONNAIRE`, `MEMBRE` | un gestionnaire voit les participations de **ses** tontines, un membre **les siennes** |
+| `PUT` | `/participation/{id}` | propriétaire de la tontine | modifie **uniquement** le nombre de parts |
+| `DELETE` | `/participation/{id}` | propriétaire de la tontine | retire un membre |
+
+Règles : un membre ne peut pas être inscrit deux fois à la même tontine (409) ; `nombreParts` est
+obligatoire et **au moins 1** (400) ; inscrire, modifier ou retirer un membre n'est possible que
+**tant que la tontine est `EN_ATTENTE`** (409 ensuite) ; le statut (`ACTIF`), la date d'adhésion et l'ordre d'inscription sont
+décidés par le serveur ; un membre ou une tontine inexistants renvoient 404.
+
+`GET /tontine` est aussi ouvert aux `MEMBRE`, qui voient alors les tontines où ils participent.
+
 ### Autres ressources (CRUD générique, sans règles métier pour l'instant)
 
-`/participation`, `/cycle`, `/cotisation`, `/tirage`, `/pret`, `/echeancePret`, `/transaction`,
-`/invitation`, `/importMembre`, `/notification`.
+`/cycle`, `/cotisation`, `/tirage`, `/pret`, `/echeancePret`, `/transaction`, `/invitation`,
+`/importMembre`, `/notification`.
 
-Sur `/participation`, l'écriture (`POST`/`PUT`/`DELETE`) est réservée aux `GESTIONNAIRE`. Les autres
-demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
+Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
 
 ### Codes d'erreur
 
@@ -150,6 +167,7 @@ Les erreurs métier renvoient un message lisible et un code HTTP cohérent :
 
 | Code | Signification | Exemple |
 |---|---|---|
+| `400` | requête incomplète ou valeur invalide | nombre de parts à 0, membre sans id |
 | `401` | non authentifié / token invalide ou expiré | token absent |
 | `403` | authentifié mais pas autorisé | un `MEMBRE` qui active une tontine |
 | `404` | ressource introuvable | tontine inexistante |
@@ -202,13 +220,14 @@ Choix notables :
 
 ```bash
 # Tests unitaires et de sécurité (sans base de données)
-./mvnw test -Dtest=TontineServiceTest,TontineControllerSecurityTest
+./mvnw test -Dtest='TontineServiceTest,TontineControllerSecurityTest,ParticipationServiceTest,ParticipationControllerSecurityTest'
 ```
 
-- `TontineServiceTest` : règles métier du service avec des faux repositories (Mockito) — propriété,
-  cycle de vie du statut, identité issue du token, lecture filtrée.
-- `TontineControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 404)
-  avec MockMvc, sans serveur ni base.
+- `TontineServiceTest`, `ParticipationServiceTest` : règles métier des services avec des faux
+  repositories (Mockito) — propriété, cycle de vie du statut, doublons, valeurs décidées par le
+  serveur, identité issue du token, lecture filtrée par rôle.
+- `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest` : règles d'accès HTTP de
+  `SecurityConfig` (401 / 403 / 200 / 204 / 404) avec MockMvc, sans serveur ni base.
 
 > `SamanatteuApplicationTests` (chargement complet du contexte) nécessite PostgreSQL et les variables
 > d'environnement ; il n'est donc pas inclus dans la commande ci-dessus.
@@ -221,7 +240,7 @@ Le développement suit un planning en 8 phases.
 |---|---|---|
 | 1 | Bases : projet, entités, base PostgreSQL | ✅ terminée |
 | 2 | Authentification et rôles | ✅ terminée, sauf « mot de passe oublié » (nécessite l'envoi de SMS, phase 6) |
-| 3 | Tontines, membres, participations | 🚧 en cours : tontines et cycle de vie ✅ ; **participations** (doublons, parts, propriété) et lecture « mes tontines » côté `MEMBRE` à faire |
+| 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ⏳ à venir |
 | 5 | Tirage aléatoire pondéré, prêts et échéanciers | ⏳ à venir |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | ⏳ à venir |
@@ -229,7 +248,8 @@ Le développement suit un planning en 8 phases.
 
 ### Limites connues
 
-- Les ressources autres que `/tontine` n'ont pas encore de règles métier ni de contrôle de propriété.
+- Les ressources autres que `/tontine` et `/participation` n'ont pas encore de règles métier ni de contrôle de propriété.
+- Un membre sorti d'une tontine déjà lancée n'a pas encore d'action dédiée (statut `SORTI`) : retirer un participant n'est possible que tant que la tontine est `EN_ATTENTE`.
 - Le refresh token n'est pas révoqué après usage (pas de stockage côté serveur).
 - Les champs `createdAt` / `updatedAt` ne sont pas encore alimentés.
 - Comment devient-on `GESTIONNAIRE` (inscription libre, validation, abonnement) reste à décider :
