@@ -112,7 +112,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `POST` | `/auth/refresh` | public | échange un refresh token contre une nouvelle paire de tokens |
 | `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN`) |
 | `GET` | `/utilisateur` | `ADMIN` | liste des utilisateurs |
-| `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou tout profil si `ADMIN`) |
+| `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou tout profil si `ADMIN`) : `nom`, `prenom`, `email` uniquement |
 | `DELETE` | `/utilisateur/{id}` | `ADMIN` | supprimer un utilisateur |
 
 ### Tontines (implémenté, testé)
@@ -221,12 +221,13 @@ Choix notables :
 
 ```bash
 # Tests unitaires et de sécurité (sans base de données)
-./mvnw test -Dtest='TontineServiceTest,TontineControllerSecurityTest,ParticipationServiceTest,ParticipationControllerSecurityTest'
+./mvnw test -Dtest='*ServiceTest,*ControllerSecurityTest'
 ```
 
-- `TontineServiceTest`, `ParticipationServiceTest` : règles métier des services avec des faux
-  repositories (Mockito) — propriété, cycle de vie du statut, doublons, valeurs décidées par le
-  serveur, identité issue du token, lecture filtrée par rôle.
+- `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest` : règles métier des
+  services avec des faux repositories (Mockito) — propriété, cycle de vie du statut, doublons,
+  valeurs décidées par le serveur, identité issue du token, lecture filtrée par rôle, champs
+  modifiables d'un profil.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest` : règles d'accès HTTP de
   `SecurityConfig` (401 / 403 / 200 / 204 / 404) avec MockMvc, sans serveur ni base.
 
@@ -257,6 +258,9 @@ Le développement suit un planning en 8 phases.
   ci-dessous), pas encore implémenté — aujourd'hui l'inscription permet encore de choisir
   `GESTIONNAIRE` ou `MEMBRE` librement.
 - Pas de migration de base (Flyway/Liquibase) : le schéma est fourni tel quel dans `db/schema.sql`.
+- `POST /tontine`, `PUT /tontine/{id}` et `/participation` reçoivent encore l'entité JPA plutôt
+  qu'un DTO d'entrée (protégées par une recopie champ par champ, à migrer vers des DTO).
+- L'inscription enregistre encore un email vide (`""`) tel quel au lieu de `null`.
 
 ## Journal des décisions
 
@@ -291,8 +295,30 @@ reste lisible.
   (`POST /participation/{id}/sortir`) qui l'exclut des futurs tirages/cotisations sans toucher à
   ses lignes passées — à construire avec les phases cotisations/tirages, une fois leur logique
   réelle en place.
+- **Une requête d'écriture reçoit un DTO d'entrée, pas l'entité.** Recevoir l'entité JPA en
+  `@RequestBody` laisse le client remplir n'importe lequel de ses champs (*mass assignment*) : se
+  protéger en « oubliant » de recopier les champs sensibles est une liste noire, fragile. Un DTO
+  d'entrée est une liste blanche : un champ absent du DTO ne peut tout simplement pas être envoyé,
+  et le compilateur refuse qu'on le recopie. Appliqué à l'inscription et à la modification de
+  profil (`ModificationUtilisateurDTO` : `nom`, `prenom`, `email`). Changer de rôle relèvera d'une
+  action d'administration dédiée ; changer de téléphone (l'identité du JWT) d'une vérification par
+  SMS.
+- **« Pas d'email » s'écrit toujours `null`, jamais `""`.** L'email est optionnel et unique en base :
+  si des chaînes vides étaient stockées, deux comptes sans email entreraient en conflit. L'entrée est
+  normalisée (vide ou blanc → `null`) avant toute vérification.
 
 ### Bugs trouvés et corrigés
+
+- **Élévation de privilèges : un `MEMBRE` pouvait se rendre `ADMIN`.** `PUT /utilisateur/{id}`
+  recevait l'entité `Utilisateur` et recopiait tous ses champs, dont `role` et `actif`, sur le compte
+  en base. Comme la règle « propre profil » autorise chacun à modifier son compte, un membre pouvait
+  envoyer `{"role": "ADMIN"}` sur son propre profil et contourner la protection de création
+  d'administrateurs. Trouvé lors d'une revue de code « clean code », corrigé par un DTO d'entrée
+  limité à `nom`, `prenom`, `email` (voir les décisions ci-dessus), couvert par un test.
+- **500 au lieu de 409 en changeant d'email pour celui d'un autre compte.** La modification de
+  profil ne vérifiait pas que le nouvel email était libre ; la contrainte d'unicité de la base
+  rejetait l'enregistrement avec une erreur non contrôlée. Corrigé par la même vérification qu'à
+  l'inscription, en ignorant le cas où l'utilisateur renvoie son propre email.
 
 - **500 au lieu de 404 sur un membre ou une tontine inexistants.** `createParticipation` faisait
   confiance à l'id envoyé par le client sans vérifier qu'il existait ; la base rejetait la clé

@@ -9,6 +9,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
+import com.samanatteu.dto.utilisateur.ModificationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.Utilisateur;
 import com.samanatteu.enums.RoleUtilisateur;
@@ -78,54 +79,31 @@ public class UtilisateurService {
     }
 
     // update
-    public Optional<UtilisateurDTO> updateUtilisateur(Long id, Utilisateur utilisateurModifier) {
-        // findById(id) renvoie un Optional<Utilisateur> : vide si l'id n'existe pas,
-        // rempli sinon.
-        // .map(...) ne s'exécute QUE si l'Optional est rempli — sinon il reste vide tel
-        // quel (pas de NullPointerException).
-        return utilisateurRepository.findById(id).map(utilisateurExsitant -> {
-
-            // Authentication = l'objet déposé par JwtAuthFilter dans SecurityContextHolder
-            // pour la requête en cours ; il contient l'identité (téléphone) ET les rôles
-            // (autorités) de la personne qui a envoyé le token JWT.
+    public Optional<UtilisateurDTO> updateUtilisateur(Long id, ModificationUtilisateurDTO modifications) {
+        return utilisateurRepository.findById(id).map(utilisateur -> {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            // getName() = le principal du token, ici le téléphone (1er argument du
-            // UsernamePasswordAuthenticationToken construit dans JwtAuthFilter) —
-            // identifiant
-            // choisi car toujours présent (l'email, lui, est optionnel depuis la v1.1).
-            String telephoneConnect = auth.getName();
-            // getAuthorities() = la liste des rôles (ex: "ROLE_ADMIN", "ROLE_MEMBRE").
-            // anyMatch(...) : true si AU MOINS UNE autorité de la liste vaut "ROLE_ADMIN".
             boolean estAdmin = auth.getAuthorities().stream()
                     .anyMatch(autorite -> autorite.getAuthority().equals("ROLE_ADMIN"));
-            // Règle d'autorisation "propre profil" : on refuse SEULEMENT si ce n'est ni
-            // le propriétaire du compte (téléphone différent) NI un admin (qui peut tout
-            // modifier). Un ADMIN ou le propriétaire lui-même passent sans exception.
-            if (!telephoneConnect.equals(utilisateurExsitant.getTelephone()) && !estAdmin) {
+            // Règle "propre profil" : seul le propriétaire du compte ou un ADMIN peut le modifier.
+            if (!auth.getName().equals(utilisateur.getTelephone()) && !estAdmin) {
                 throw new AccesRefuseException();
             }
-            // utilisateurExsitant = l'entité déjà en base (trouvée par findById).
-            // utilisateurModifier = les nouvelles valeurs envoyées par le client (paramètre
-            // de la méthode).
-            // On recopie les nouvelles valeurs DANS l'entité existante, champ par champ.
-            utilisateurExsitant.setNom(utilisateurModifier.getNom());
-            utilisateurExsitant.setPrenom(utilisateurModifier.getPrenom());
-            utilisateurExsitant.setTelephone(utilisateurModifier.getTelephone());
-            utilisateurExsitant.setEmail(utilisateurModifier.getEmail());
-            utilisateurExsitant.setRole(utilisateurModifier.getRole());
-            utilisateurExsitant.setActif(utilisateurModifier.getActif());
-            utilisateurExsitant.setCreatedAt(utilisateurModifier.getCreatedAt());
-            utilisateurExsitant.setUpdatedAt(utilisateurModifier.getUpdatedAt());
-            utilisateurExsitant.setTontineGerees(utilisateurModifier.getTontineGerees());
 
-            // save() persiste les changements en base ET renvoie l'entité Utilisateur à
-            // jour (avec motDePasse).
-            Utilisateur enregistre = utilisateurRepository.save(utilisateurExsitant);
-            // On ne renvoie JAMAIS l'entité brute au client : conversion en DTO juste avant
-            // de sortir (sans motDePasse).
-            // Comme on est dans un .map(), ce retour devient automatiquement le contenu de
-            // l'Optional<UtilisateurDTO>.
-            return convertiUtilisateurDTO(enregistre);
+            // En base, "pas d'email" s'écrit toujours null, jamais "" : sinon deux comptes
+            // sans email entreraient en conflit sur la contrainte d'unicité.
+            String nouvelEmail = (modifications.getEmail() == null || modifications.getEmail().isBlank())
+                    ? null
+                    : modifications.getEmail();
+            if (nouvelEmail != null
+                    && !nouvelEmail.equals(utilisateur.getEmail())
+                    && utilisateurRepository.existsByEmail(nouvelEmail)) {
+                throw new EmailDejaUtiliseException(nouvelEmail);
+            }
+
+            utilisateur.setNom(modifications.getNom());
+            utilisateur.setPrenom(modifications.getPrenom());
+            utilisateur.setEmail(nouvelEmail);
+            return convertiUtilisateurDTO(utilisateurRepository.save(utilisateur));
         });
     }
 

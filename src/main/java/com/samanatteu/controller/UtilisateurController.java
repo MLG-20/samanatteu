@@ -2,10 +2,10 @@ package com.samanatteu.controller;
 
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
 import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
+import com.samanatteu.dto.utilisateur.ModificationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
-import com.samanatteu.entity.Utilisateur;
+
 import com.samanatteu.service.utilisateur.UtilisateurService;
 
 import jakarta.validation.Valid;
@@ -44,8 +44,8 @@ public class UtilisateurController {
     // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<UtilisateurDTO> updateUtilisateur(@PathVariable Long id,
-            @RequestBody Utilisateur utilisateurModifier) {
-        return utilisateurService.updateUtilisateur(id, utilisateurModifier)
+            @Valid @RequestBody ModificationUtilisateurDTO modifications) {
+        return utilisateurService.updateUtilisateur(id, modifications)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
 
