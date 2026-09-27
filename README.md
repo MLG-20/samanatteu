@@ -18,6 +18,7 @@ cycles, les cotisations, les tirages et les prêts.
 - [Sécurité](#sécurité)
 - [Tests](#tests)
 - [Avancement](#avancement)
+- [Journal des décisions](#journal-des-décisions)
 
 ## Rôles
 
@@ -252,6 +253,67 @@ Le développement suit un planning en 8 phases.
 - Un membre sorti d'une tontine déjà lancée n'a pas encore d'action dédiée (statut `SORTI`) : retirer un participant n'est possible que tant que la tontine est `EN_ATTENTE`.
 - Le refresh token n'est pas révoqué après usage (pas de stockage côté serveur).
 - Les champs `createdAt` / `updatedAt` ne sont pas encore alimentés.
-- Comment devient-on `GESTIONNAIRE` (inscription libre, validation, abonnement) reste à décider :
-  aujourd'hui l'inscription permet de choisir `GESTIONNAIRE` ou `MEMBRE`.
+- Comment devient-on `GESTIONNAIRE` : décidé pour un modèle par **abonnement** (voir le journal
+  ci-dessous), pas encore implémenté — aujourd'hui l'inscription permet encore de choisir
+  `GESTIONNAIRE` ou `MEMBRE` librement.
 - Pas de migration de base (Flyway/Liquibase) : le schéma est fourni tel quel dans `db/schema.sql`.
+
+## Journal des décisions
+
+Ce projet est aussi un exercice d'apprentissage : les décisions de conception et les bugs
+significatifs sont tracés ici plutôt que perdus dans l'historique Git, pour que le raisonnement
+reste lisible.
+
+### Décisions de conception
+
+- **L'ADMIN ne touche pas au contenu des tontines.** Dans un SaaS multi-clients, la plateforme
+  (ADMIN) ne doit ni lire ni modifier les données métier de ses clients (GESTIONNAIRE). Toutes les
+  routes `/tontine` et `/participation` sont donc en `hasRole("GESTIONNAIRE")`, sans échappatoire
+  pour l'ADMIN — contrairement à `/utilisateur`, où l'ADMIN garde un accès complet.
+- **L'identité du JWT est le téléphone, pas l'email.** L'email est devenu optionnel à l'inscription
+  (téléphone obligatoire, cas d'usage principal). Utiliser l'email comme identité aurait cassé les
+  comptes téléphone-only.
+- **Un statut ne se modifie jamais par un `PUT` libre.** Une ressource avec un cycle de vie
+  (`StatutTontine`) n'expose que des actions dédiées (`activer`/`suspendre`/`cloturer`), chacune
+  avec ses transitions autorisées ; le `PUT` générique n'écrit plus le statut du tout. Voir
+  [`Notes_Cours/11_Cycle_de_Vie_Statut.md`](../Notes_Cours/11_Cycle_de_Vie_Statut.md).
+- **Un objet imbriqué du JSON (`{"id": …}`) n'est jamais une entité de confiance.** `tontine` et
+  `membre` envoyés dans le corps d'une requête ne servent qu'à indiquer un id ; le service recharge
+  toujours la vraie ressource en base avant de contrôler quoi que ce soit dessus.
+- **Comment devient-on `GESTIONNAIRE` : par abonnement.** Dans un SaaS, c'est l'organisateur qui
+  paie, pas les membres. Prévu en 3 étapes futures : (1) une entité `Abonnement` (formule, statut,
+  échéance) avec la règle « créer une tontine exige un abonnement actif », (2) une activation
+  manuelle par l'ADMIN pour développer et tester sans paiement réel, (3) un vrai paiement (Wave,
+  Orange Money…), dépendant de la phase notifications. Non implémenté à ce stade.
+- **Un membre qui quitte une tontine active n'est pas supprimé.** Ses cotisations passées font
+  partie de l'historique financier ; l'effacer les effacerait aussi. La solution prévue est un
+  troisième statut de participation, `SORTI` (déjà dans l'enum), via une action dédiée
+  (`POST /participation/{id}/sortir`) qui l'exclut des futurs tirages/cotisations sans toucher à
+  ses lignes passées — à construire avec les phases cotisations/tirages, une fois leur logique
+  réelle en place.
+
+### Bugs trouvés et corrigés
+
+- **500 au lieu de 404 sur un membre ou une tontine inexistants.** `createParticipation` faisait
+  confiance à l'id envoyé par le client sans vérifier qu'il existait ; la base rejetait la clé
+  étrangère avec une erreur non contrôlée. Corrigé en rechargeant systématiquement la ressource
+  avant de continuer.
+- **`existsByEmail(null)` bloquait toute inscription téléphone-only après la première.** Une fois
+  l'email devenu optionnel, la vérification de doublon d'email s'exécutait même sans email fourni ;
+  un seul compte sans email pouvait exister. Corrigé en ne l'exécutant que si l'email est renseigné.
+- **`/auth/refresh` renvoyait 401 avant même d'atteindre le service.** La route avait été oubliée
+  dans la liste `permitAll()` de `SecurityConfig` ; `anyRequest().authenticated()` la bloquait pour
+  tout appelant non connecté, cas d'usage pourtant normal d'un refresh token expiré.
+- **Erreur de rôle Spring Security : 401 au lieu de 403 sur un accès insuffisant.** Le chemin
+  `AccessDeniedException → sendError(403)` déclenche un forward interne vers `/error` que le filtre
+  JWT ignore par défaut ; la requête atterrissait anonyme sur `anyRequest().authenticated()`.
+  Corrigé avec un `AccessDeniedHandler` dédié.
+- **Un `PUT` qui validait une valeur sans l'appliquer.** `updateParticipation` vérifiait le nombre
+  de parts envoyé, mais oubliait de l'écrire sur l'entité avant `save()` : la requête répondait 200
+  sans rien changer, sans qu'aucune erreur ne le révèle. Trouvé par un test qui asserte la valeur
+  après coup, pas seulement l'absence d'exception.
+- **Une transition de statut mal câblée pouvait ressusciter une tontine terminée.** Une faute de
+  frappe dans les statuts autorisés d'`activerTontine` (`TERMINEE` au lieu de `SUSPENDUE`) rendait
+  possible de réactiver une tontine `TERMINEE`, censée être un état final. Le test correspondant
+  est volontairement passé au rouge pour confirmer qu'il détectait bien le problème, avant d'être
+  corrigé.
