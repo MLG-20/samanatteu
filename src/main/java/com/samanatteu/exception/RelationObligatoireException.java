@@ -4,6 +4,6 @@ import org.springframework.http.HttpStatus;
 
 public class RelationObligatoireException extends SamanatteuException {
     public RelationObligatoireException(String nomChamp) {
-        super("Le champ " + nomChamp + " est obligatoire.", HttpStatus.BAD_REQUEST);//erreur 400
+        super("Le champ " + nomChamp + " est obligatoire.", HttpStatus.BAD_REQUEST);
     }
 }

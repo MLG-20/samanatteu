@@ -17,8 +17,6 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class JwtAuthentificationEntryPoint implements AuthenticationEntryPoint {
 
-    // commence() = point d'entrée appelé automatiquement par Spring Security
-    // (pas nous) dès qu'un accès est refusé faute d'authentification.
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
             AuthenticationException authException) throws IOException, ServletException {

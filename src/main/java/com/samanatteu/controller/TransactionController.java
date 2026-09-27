@@ -25,19 +25,16 @@ public class TransactionController {
         this.transactionService = transactionService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<TransactionDTO> listTransactions() {
         return transactionService.listTransactions();
     }
 
-    // --- Créer ---
     @PostMapping
     public TransactionDTO createTransaction(@RequestBody Transaction transaction) {
         return transactionService.createTransaction(transaction);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<TransactionDTO> updateTransaction(@PathVariable Long id,
             @RequestBody Transaction transactionModifier) {
@@ -46,7 +43,6 @@ public class TransactionController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTransaction(@PathVariable Long id) {
         if (transactionService.deleteTransaction(id)) {

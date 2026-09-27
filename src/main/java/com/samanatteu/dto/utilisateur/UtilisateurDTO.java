@@ -9,8 +9,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 
-// DTO = objet de transfert vers le client, distinct de l'entité JPA Utilisateur.
-// Jamais d'annotations JPA ici : cette classe n'est ni stockée ni lue en base, juste sérialisée en JSON.
 // Champ motDePasse volontairement ABSENT : c'est ce qui empêche physiquement le mot de passe
 // de sortir dans les réponses de l'API (OWASP A02 - Cryptographic Failures / Sensitive Data Exposure),
 // même si l'entité en base le contient toujours pour le login.

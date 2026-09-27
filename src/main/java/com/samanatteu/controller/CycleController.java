@@ -27,19 +27,16 @@ public class CycleController {
         this.cycleService = cycleService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<CycleDTO> listCycle() {
         return cycleService.listCycle();
     }
 
-    // --- Créer ---
     @PostMapping
     public CycleDTO createCycle(@RequestBody Cycle cycle) {
         return cycleService.createCycle(cycle);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<CycleDTO> updateCycle(@PathVariable Long id,
             @RequestBody Cycle cycleModifier) {
@@ -48,7 +45,6 @@ public class CycleController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCycle(@PathVariable Long id) {
         if (cycleService.deleteCycle(id)) {

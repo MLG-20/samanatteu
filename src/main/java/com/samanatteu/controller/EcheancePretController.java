@@ -27,19 +27,16 @@ public class EcheancePretController {
         this.echeancePretService = echeancePretService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<EcheancePretDTO> listEcheancePrets() {
         return echeancePretService.listEcheancePret();
     }
 
-    // --- Créer ---
     @PostMapping
     public EcheancePretDTO createEcheancePret(@RequestBody EcheancePret echeancePret) {
         return echeancePretService.createEcheancePret(echeancePret);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<EcheancePretDTO> updateEcheancePret(@PathVariable Long id,
             @RequestBody EcheancePret echeancePretModifier) {
@@ -49,7 +46,6 @@ public class EcheancePretController {
      
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteEcheancePret(@PathVariable Long id) {
         if (echeancePretService.deleteEcheancePret(id)) {

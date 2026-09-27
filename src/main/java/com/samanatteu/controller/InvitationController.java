@@ -25,20 +25,17 @@ public class InvitationController {
         this.invitationService = invitationService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<InvitationDTO> listInvitation() {
         return invitationService.listInvitation();
     }
 
-    // --- Créer ---
     @PostMapping
 
     public InvitationDTO createInvitation(@RequestBody Invitation invitation) {
         return invitationService.createInvitation(invitation);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<InvitationDTO> updateInvitation(@PathVariable Long id,
             @RequestBody Invitation invitationModifier) {
@@ -47,7 +44,6 @@ public class InvitationController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteInvitation(@PathVariable Long id) {
         if (invitationService.deleteInvitation(id)) {

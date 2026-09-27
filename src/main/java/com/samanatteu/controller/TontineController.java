@@ -27,19 +27,12 @@ public class TontineController {
         this.tontineService = tontineService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<TontineDTO> listTontines() {
         return tontineService.listTontine();
     }
 
-    // --- Créer ---
     @PostMapping
-    /*
-     * @RequestBody TontineDTO tontine — dit à Spring "prends le JSON envoyé dans le
-     * corps
-     * de la requête, et convertis-le automatiquement en objet TontineDTO"
-     */
     public TontineDTO createTontine(@RequestBody Tontine tontine) {
         return tontineService.createTontine(tontine);
     }
@@ -65,7 +58,6 @@ public class TontineController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<TontineDTO> updateTontine(@PathVariable Long id, @RequestBody Tontine TontineModifier) {
         return tontineService.updateTontine(id, TontineModifier)
@@ -73,7 +65,6 @@ public class TontineController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTontine(@PathVariable Long id) {
         if (tontineService.deleteTontine(id)) {

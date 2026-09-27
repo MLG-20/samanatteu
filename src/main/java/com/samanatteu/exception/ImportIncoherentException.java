@@ -6,6 +6,6 @@ public class ImportIncoherentException extends SamanatteuException{
     public ImportIncoherentException(int nbMembresTotal, int nbImportes, int nbErreurs){
         super("Import incohérent : " + nbImportes + " importés + " + nbErreurs
                 + " erreurs ne correspond pas au total de " + nbMembresTotal + " membres.",
-                HttpStatus.BAD_REQUEST);//erreur 400
+                HttpStatus.BAD_REQUEST);
     }
 }

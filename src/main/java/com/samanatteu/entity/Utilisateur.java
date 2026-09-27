@@ -57,10 +57,8 @@ public class Utilisateur {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Pas de colonne SQL pour ce champ : mappedBy = "gestionnaire" dit que la relation
-    // est déjà gérée par l'attribut "gestionnaire" dans Tontine.java (côté propriétaire).
-    // La vraie clé étrangère (gestionnaire_id) vit dans la table "tontine", pas ici.
-    // Ce champ n'est qu'une vue de confort côté Java pour faire utilisateur.getTontineGerees().
+    // Côté inverse de Tontine.gestionnaire : pas de colonne ici, la clé étrangère
+    // gestionnaire_id est dans la table tontine.
     @OneToMany(mappedBy = "gestionnaire")
     private List<Tontine> tontineGerees;
 }

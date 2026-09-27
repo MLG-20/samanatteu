@@ -25,20 +25,17 @@ public class ImportMembreController {
         this.importMembreService = importMembreService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<ImportMembreDTO> listImportMembres() {
         return importMembreService.listImportMembre();
     }
 
-    // --- Créer ---
     @PostMapping
 
     public ImportMembreDTO createImportMembre(@RequestBody ImportMembre importMembre) {
         return importMembreService.createImportMembre(importMembre);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<ImportMembreDTO> updateImportMembre(@PathVariable Long id,
             @RequestBody ImportMembre importMembreModifier) {
@@ -47,7 +44,6 @@ public class ImportMembreController {
                .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteImportMembre(@PathVariable Long id) {
         if (importMembreService.deleteImportMembre(id)) {

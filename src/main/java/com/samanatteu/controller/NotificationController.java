@@ -25,20 +25,17 @@ public class NotificationController {
         this.notificationService = notificationService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<NotificationDTO> listNotification() {
         return notificationService.listNotification();
     }
 
-    // --- Créer ---
     @PostMapping
 
     public NotificationDTO createNotification(@RequestBody Notification notification) {
         return notificationService.createNotification(notification);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<NotificationDTO> updateNotification(@PathVariable Long id,
             @RequestBody Notification notificationModifier) {
@@ -47,7 +44,6 @@ public class NotificationController {
                .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNotification(@PathVariable Long id) {
         if (notificationService.deleteNotification(id)) {

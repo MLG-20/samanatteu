@@ -7,11 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// DTO = objet de transfert vers le client, distinct de l'entité JPA Tontine.
-// Jamais d'annotations JPA ici : cette classe n'est ni stockée ni lue en base.
-// gestionnaireId est un simple Long (pas un Utilisateur complet) : si on mettait l'entité Utilisateur
-// ici, son motDePasse serait réexposé en cascade dans le JSON de /tontine - même faille qu'on corrige
-// sur UtilisateurDTO, mais imbriquée. Le client n'a besoin que de l'id pour identifier le gestionnaire.
+// gestionnaireId (Long) et non l'entité Utilisateur : sinon son motDePasse serait exposé
+// en cascade dans le JSON de /tontine.
 @Getter
 @Setter
 @NoArgsConstructor

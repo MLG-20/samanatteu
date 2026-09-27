@@ -25,25 +25,16 @@ public class CotisationController {
         this.cotisationService = cotisationService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<CotisationDTO> listCotisation() {
         return cotisationService.listCotisations();
     }
 
-    // --- Créer ---
     @PostMapping
-    /*
-     * @RequestBody CotisationDTO cotisation — dit à Spring "prends le JSON
-     * envoyé dans le
-     * corps
-     * de la requête, et convertis-le automatiquement en objet CotisationDTO"
-     */
     public CotisationDTO createCotisation(@RequestBody Cotisation cotisation) {
         return cotisationService.createCotisation(cotisation);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<CotisationDTO> updateCotisation(@PathVariable Long id,
             @RequestBody Cotisation cotisationModifier) {
@@ -52,7 +43,6 @@ public class CotisationController {
                .orElse(ResponseEntity.notFound().build());
         }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCotisation(@PathVariable Long id) {
         if (cotisationService.deleteCotisation(id)) {

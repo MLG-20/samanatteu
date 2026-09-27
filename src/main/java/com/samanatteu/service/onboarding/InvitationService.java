@@ -21,37 +21,25 @@ public class InvitationService {
         this.invitationRepository = invitationRepository;
     }
 
-    // Lister
     public List<InvitationDTO> listInvitation() {
-        return invitationRepository.findAll() // 1. List<Invitation> brute depuis la base (avec motDePasse)
-                .stream() // 2. transforme la liste en flux traitable élément par élément
-                .map(this::convertiInvitationDTO) // 3. applique la conversion à CHAQUE Invitation -> InvitationDTO
-                                                  // (sans motDePasse)
-                .toList(); // 4. reconstitue une vraie List<InvitationDTO> à partir du flux
+        return invitationRepository.findAll()
+                .stream()
+                .map(this::convertiInvitationDTO)
+                .toList();
     }
 
-    // créer
     public InvitationDTO createInvitation(Invitation invitation) {
         Invitation enregistree = invitationRepository.save(invitation);
         return convertiInvitationDTO(enregistree);
     }
 
-    // update
     public Optional<InvitationDTO> updateInvitation(Long id, Invitation invitationModifier) {
-        // findById(id) renvoie un Optional<Invitation> : vide si l'id n'existe pas,
-        // rempli sinon.
-        // .map(...) ne s'exécute QUE si l'Optional est rempli — sinon il reste vide tel
-        // quel (pas de NullPointerException).
         return invitationRepository.findById(id).map(invitationExsitante -> {
             if (invitationExsitante.getStatut() == StatutInvitation.ACCEPTE) {
                 throw new InvitationDejaUtiliseeException(invitationExsitante.getToken());
             } else if (invitationExsitante.getExpireAt().isBefore(LocalDateTime.now())) {
                 throw new InvitationExpireeException(invitationExsitante.getToken());
             }
-            // invitationExsitante = l'entité déjà en base (trouvée par findById).
-            // invitationModifier = les nouvelles valeurs envoyées par le client (paramètre
-            // de la méthode).
-            // On recopie les nouvelles valeurs DANS l'entité existante, champ par champ.
             invitationExsitante.setTontine(invitationModifier.getTontine());
             invitationExsitante.setToken(invitationModifier.getToken());
             invitationExsitante.setTelephone(invitationModifier.getTelephone());
@@ -63,18 +51,11 @@ public class InvitationService {
             invitationExsitante.setStatut(invitationModifier.getStatut());
             invitationExsitante.setCreatedAt(invitationModifier.getCreatedAt());
 
-            // save() persiste les changements en base ET renvoie l'entité Invitation à jour
-            // (avec motDePasse).
             Invitation enregistre = invitationRepository.save(invitationExsitante);
-            // On ne renvoie JAMAIS l'entité brute au client : conversion en DTO juste avant
-            // de sortir (sans motDePasse).
-            // Comme on est dans un .map(), ce retour devient automatiquement le contenu de
-            // l'Optional<InvitationDTO>.
             return convertiInvitationDTO(enregistre);
         });
     }
 
-    // Delete
     public boolean deleteInvitation(Long id) {
         if (invitationRepository.existsById(id)) {
             invitationRepository.deleteById(id);

@@ -12,10 +12,6 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class LoginDTO {
-    // le loginDTO nous permet de se connecter avec les identifiants email,
-    // téléphone et mot de
-    // passe
-
     private String email;
 
     private String telephone;

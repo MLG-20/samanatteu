@@ -42,95 +42,59 @@ public class ParticipationService {
         this.utilisateurConnecte = utilisateurConnecte;
     }
 
-    // Lister
     public List<ParticipationDTO> listParticipation() {
-
         boolean estGestionnaire = utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE);
 
         List<Participation> participations = estGestionnaire
                 ? participationRepository.findByTontineGestionnaireTelephone(utilisateurConnecte.telephone())
                 : participationRepository.findByMembreTelephone(utilisateurConnecte.telephone());
         return participations.stream()
-                .map(this::convertiParticipationDTO) // 3. applique la conversion à CHAQUE Participation ->
-                                                     // ParticipationDTO
-                                                     // (sans motDePasse)
-                .toList(); // 4. reconstitue une vraie List<ParticipationDTO> à partir du flux
+                .map(this::convertiParticipationDTO)
+                .toList();
     }
 
-    // créer : inscrire un membre à une tontine.
-    // Les vérifications sont dans un ORDRE VOLONTAIRE : on contrôle d'abord "qui a
-    // le droit"
-    // (propriétaire), ensuite "est-ce possible" (doublon, statut, parts). Ainsi un
-    // étranger
-    // reçoit un 403 avant d'apprendre quoi que ce soit sur la tontine.
+    // Ordre volontaire des contrôles : d'abord « qui a le droit » (propriétaire), ensuite
+    // « est-ce possible » (membre, doublon, statut, parts). Un étranger reçoit ainsi un 403
+    // avant d'apprendre quoi que ce soit sur la tontine.
     public ParticipationDTO createParticipation(Participation participation) {
-        // 1. Le client doit avoir indiqué un membre et une tontine (sinon 400).
         if (participation.getMembre() == null || participation.getMembre().getId() == null) {
             throw new RelationObligatoireException("membre");
         }
         if (participation.getTontine() == null || participation.getTontine().getId() == null) {
             throw new RelationObligatoireException("tontine");
         }
-        // 2. On NE FAIT PAS confiance à la tontine du JSON (ce n'est qu'un {id: 5}
-        // fabriqué
-        // par le client) : on va chercher la vraie tontine en base. Introuvable -> 404.
+        // La tontine et le membre du JSON ne sont que des {id: …} fabriqués par le client :
+        // on recharge les vrais en base (404 propre au lieu d'un 500 sur la clé étrangère).
         Tontine tontine = tontineRepository.findById(participation.getTontine().getId())
                 .orElseThrow(() -> new TontineIntrouvableException());
-        // 3. Seul le gestionnaire de CETTE tontine peut y inscrire quelqu'un (sinon
-        // 403).
         verifierProprietaire(tontine);
 
-        // 3b. Même principe que pour la tontine : le membre du JSON n'est qu'un {id:
-        // 30}
-        // fabriqué par le client. On va chercher le vrai membre en base. S'il n'existe
-        // pas
-        // -> 404 propre (sinon la base refuserait l'enregistrement et le client
-        // recevrait un 500).
         Utilisateur membre = utilisateurRepository.findById(participation.getMembre().getId())
                 .orElseThrow(() -> new MembreIntrouvableException());
-        // 4. Pas de doublon : ce membre ne doit pas déjà être inscrit à cette tontine
-        // (409).
         if (participationRepository.existsByMembreIdAndTontineId(
                 participation.getMembre().getId(), tontine.getId())) {
             throw new ParticipationDejaExistanteException();
         }
-        // 5. On n'inscrit que tant que la tontine est EN_ATTENTE : ajouter un
-        // participant (ou des
-        // parts) après le début fausserait le tirage (409). On lit le statut EN BASE.
+        // Ajouter un participant (ou des parts) après le démarrage fausserait le tirage.
         verifierInscriptionsOuvertes(tontine);
-        // 6. Le nombre de parts est obligatoire et au moins 1 (le tirage est pondéré
-        // par les parts).
-        // Le test "== null" vient EN PREMIER : "null < 1" ferait planter
-        // (NullPointerException).
         verifierNombreParts(participation.getNombreParts());
-        // 7. Ces trois champs sont décidés par le SERVEUR, jamais par le client :
-        // - statut : toujours ACTIF à l'inscription ;
-        // - date d'adhésion : la date du jour ;
-        // - ordre d'inscription : (plus grand ordre déjà pris dans cette tontine) + 1,
-        // ou 1 si personne n'est encore inscrit. On prend le "dernier + 1" et non "le
-        // nombre
-        // d'inscrits + 1", car après une suppression au milieu, le second donnerait un
-        // numéro déjà pris.
+
+        // Statut, date d'adhésion et ordre d'inscription sont décidés par le serveur.
+        // Ordre = dernier + 1 (et non nombre d'inscrits + 1, qui redonnerait un numéro
+        // déjà pris après une suppression au milieu).
         participation.setStatut(StatutParticipation.ACTIF);
         participation.setDateAdhesion(Date.valueOf(LocalDate.now()));
         participation.setOrdreInscription(
                 participationRepository.findFirstByTontineIdOrderByOrdreInscriptionDesc(tontine.getId())
                         .map(derniere -> derniere.getOrdreInscription() + 1)
                         .orElse(1));
-        // 8. On remplace la tontine "fabriquée" du JSON par la vraie, chargée en base à
-        // l'étape 2.
         participation.setTontine(tontine);
         participation.setMembre(membre);
         Participation enregistree = participationRepository.save(participation);
         return convertiParticipationDTO(enregistree);
     }
 
-    // update
     public Optional<ParticipationDTO> updateParticipation(Long id, Participation participationModifier) {
-        // findById(id) renvoie un Optional<Participation> : vide si l'id n'existe pas,
-        // rempli sinon.
-        // .map(...) ne s'exécute QUE si l'Optional est rempli — sinon il reste vide tel
-        // quel (pas de NullPointerException).
         return participationRepository.findById(id).map(existante -> {
             verifierProprietaire(existante.getTontine());
             verifierInscriptionsOuvertes(existante.getTontine());
@@ -140,7 +104,6 @@ public class ParticipationService {
         });
     }
 
-    // Delete
     public boolean deleteParticipation(Long id) {
         Optional<Participation> participation = participationRepository.findById(id);
         if (participation.isPresent()) {
@@ -165,6 +128,7 @@ public class ParticipationService {
     }
 
     private void verifierNombreParts(Integer nombreParts) {
+        // null testé en premier : "null < 1" lèverait une NullPointerException.
         if (nombreParts == null || nombreParts < 1) {
             throw new NombrePartsInvalideException();
         }

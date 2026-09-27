@@ -18,8 +18,6 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class JwtAccessDeniedHandler implements AccessDeniedHandler {
 
-    // handle() = point d'entrée appelé automatiquement par Spring Security
-    // (pas nous) dès qu'un utilisateur authentifié n'a pas le bon rôle.
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
             AccessDeniedException accessDeniedException) throws IOException, ServletException {

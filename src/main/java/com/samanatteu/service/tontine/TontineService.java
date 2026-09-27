@@ -35,7 +35,6 @@ public class TontineService {
         this.utilisateurConnecte = utilisateurConnecte;
     }
 
-    // Lister
     public List<TontineDTO> listTontine() {
         boolean estGestionnaire = utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE);
 
@@ -47,12 +46,10 @@ public class TontineService {
                         .toList();
 
         return tontines.stream()
-                .map(this::convertiTontineDTO) // 3. applique la conversion à CHAQUE Tontine -> TontineDTO
-                                               // (sans motDePasse)
-                .toList(); // 4. reconstitue une vraie List<TontineDTO> à partir du flux
+                .map(this::convertiTontineDTO)
+                .toList();
     }
 
-    // créer
     public TontineDTO createTontine(Tontine tontine) {
         Utilisateur gestionnaire = utilisateurRepository.findByTelephone(utilisateurConnecte.telephone())
                 .orElseThrow(AccesRefuseException::new);
@@ -62,40 +59,24 @@ public class TontineService {
         return convertiTontineDTO(enregistre);
     }
 
-    // update
     public Optional<TontineDTO> updateTontine(Long id, Tontine tontineModifier) {
-        // findById(id) renvoie un Optional<Tontine> : vide si l'id n'existe pas,
-        // rempli sinon.
-        // .map(...) ne s'exécute QUE si l'Optional est rempli — sinon il reste vide tel
-        // quel (pas de NullPointerException).
         return tontineRepository.findById(id).map(tontineExsitant -> {
             verifierProprietaire(tontineExsitant);
 
             if (tontineExsitant.getStatut() != StatutTontine.EN_ATTENTE) {
                 throw new TontineNonModifiableException(tontineExsitant.getStatut().toString());
             }
-            // tontineExsitant = l'entité déjà en base (trouvée par findById).
-            // tontineModifier = les nouvelles valeurs envoyées par le client (paramètre
-            // de la méthode).
-            // On recopie les nouvelles valeurs DANS l'entité existante, champ par champ.
             tontineExsitant.setNom(tontineModifier.getNom());
             tontineExsitant.setMontantPart(tontineModifier.getMontantPart());
             tontineExsitant.setFrequence(tontineModifier.getFrequence());
             tontineExsitant.setNbCycles(tontineModifier.getNbCycles());
             tontineExsitant.setDescription(tontineModifier.getDescription());
             tontineExsitant.setJourCotisation(tontineModifier.getJourCotisation());
-            // save() persiste les changements en base ET renvoie l'entité Tontine à jour
-            // (avec motDePasse).
             Tontine enregistre = tontineRepository.save(tontineExsitant);
-            // On ne renvoie JAMAIS l'entité brute au client : conversion en DTO juste avant
-            // de sortir (sans motDePasse).
-            // Comme on est dans un .map(), ce retour devient automatiquement le contenu de
-            // l'Optional<TontineDTO>.
             return convertiTontineDTO(enregistre);
         });
     }
 
-    // Delete
     public boolean deleteTontine(Long id) {
         Optional<Tontine> tontine = tontineRepository.findById(id);
         if (tontine.isPresent()) {

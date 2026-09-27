@@ -19,16 +19,13 @@ public class NotificationService {
         this.notificationRepository = notificationRepository;
     }
 
-    // Lister
     public List<NotificationDTO> listNotification() {
-        return notificationRepository.findAll() // 1. List<Notification> brute depuis la base (avec motDePasse)
-                .stream() // 2. transforme la liste en flux traitable élément par élément
-                .map(this::convertiNotificationDTO) // 3. applique la conversion à CHAQUE Notification -> NotificationDTO
-                                                  // (sans motDePasse)
-                .toList(); // 4. reconstitue une vraie List<NotificationDTO> à partir du flux
+        return notificationRepository.findAll()
+                .stream()
+                .map(this::convertiNotificationDTO)
+                .toList();
     }
 
-    // créer
     public NotificationDTO createNotification(Notification notification) {
         if (notification.getStatut() == StatutNotification.ECHEC) {
             throw new EnvoiNotificationEchoueException(notification.getDestinataire().getId());
@@ -37,17 +34,8 @@ public class NotificationService {
         return convertiNotificationDTO(enregistree);
     }
 
-    // update
     public Optional<NotificationDTO> updateNotification(Long id, Notification notificationModifier) {
-        // findById(id) renvoie un Optional<Notification> : vide si l'id n'existe pas,
-        // rempli sinon.
-        // .map(...) ne s'exécute QUE si l'Optional est rempli — sinon il reste vide tel
-        // quel (pas de NullPointerException).
         return notificationRepository.findById(id).map(notificationExsitante -> {
-            // notificationExsitante = l'entité déjà en base (trouvée par findById).
-            // notificationModifier = les nouvelles valeurs envoyées par le client (paramètre
-            // de la méthode).
-            // On recopie les nouvelles valeurs DANS l'entité existante, champ par champ.
             notificationExsitante.setDestinataire(notificationModifier.getDestinataire());
             notificationExsitante.setTitre(notificationModifier.getTitre());
             notificationExsitante.setMessage(notificationModifier.getMessage());
@@ -56,18 +44,11 @@ public class NotificationService {
             notificationExsitante.setDateEnvoi(notificationModifier.getDateEnvoi());
             notificationExsitante.setCreatedAt(notificationModifier.getCreatedAt());
 
-            // save() persiste les changements en base ET renvoie l'entité Notification à jour
-            // (avec motDePasse).
             Notification enregistre = notificationRepository.save(notificationExsitante);
-            // On ne renvoie JAMAIS l'entité brute au client : conversion en DTO juste avant
-            // de sortir (sans motDePasse).
-            // Comme on est dans un .map(), ce retour devient automatiquement le contenu de
-            // l'Optional<NotificationDTO>.
             return convertiNotificationDTO(enregistre);
         });
     }
 
-    // Delete
     public boolean deleteNotification(Long id) {
         if (notificationRepository.existsById(id)) {
             notificationRepository.deleteById(id);

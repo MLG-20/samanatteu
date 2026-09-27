@@ -25,19 +25,16 @@ public class PretController {
         this.pretService = pretService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<PretDTO> listPret() {
         return pretService.listPret();
     }
 
-    // --- Créer ---
     @PostMapping
     public PretDTO createPret(@RequestBody Pret pret) {
         return pretService.createPret(pret);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<PretDTO> updatePret(@PathVariable Long id,
             @RequestBody Pret pretModifier) {
@@ -46,7 +43,6 @@ public class PretController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePret(@PathVariable Long id) {
         if (pretService.deletePret(id)) {

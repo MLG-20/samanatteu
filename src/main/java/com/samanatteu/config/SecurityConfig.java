@@ -20,9 +20,6 @@ public class SecurityConfig {
                 return new BCryptPasswordEncoder();
         }
 
-        // JwtAuthFilter est injecté directement en paramètre de cette méthode @Bean
-        // (pas besoin de champ ni de constructeur dans cette classe @Configuration :
-        // Spring reconnaît le type du paramètre et fournit le bean correspondant).
         @Bean
         public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
                         JwtAuthentificationEntryPoint entryPoint, JwtAccessDeniedHandler accessDeniedHandler)
@@ -33,12 +30,9 @@ public class SecurityConfig {
                                                 .authenticationEntryPoint(entryPoint)
                                                 .accessDeniedHandler(accessDeniedHandler))
 
-                                // Règles d'accès évaluées dans l'ordre : la première qui correspond à la
-                                // requête (méthode HTTP + chemin) s'applique. permitAll() = accessible sans
-                                // token (login, création de compte). hasRole("ADMIN") = il faut un token
-                                // valide ET l'autorité ROLE_ADMIN (construite dans JwtAuthFilter).
-                                // anyRequest().authenticated() = filet de sécurité : toute route non listée
-                                // ci-dessus exige au moins un token valide (peu importe le rôle).
+                                // Évaluées dans l'ordre : la première règle qui correspond s'applique.
+                                // anyRequest().authenticated() est le filet : toute route non listée
+                                // exige au moins un token valide.
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
                                                 .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll()
@@ -56,9 +50,6 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.PUT, "/participation/**").hasRole("GESTIONNAIRE")
                                                 .requestMatchers(HttpMethod.DELETE, "/participation/**").hasRole("GESTIONNAIRE")
                                                 .anyRequest().authenticated())
-                                // Insère notre filtre JWT AVANT le filtre standard d'authentification
-                                // par mot de passe, pour qu'il soit exécuté sur chaque requête et
-                                // puisse authentifier via le token s'il est présent.
                                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
                 return http.build();
         }

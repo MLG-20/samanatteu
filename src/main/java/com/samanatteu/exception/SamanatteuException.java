@@ -2,18 +2,16 @@ package com.samanatteu.exception;
 
 import org.springframework.http.HttpStatus;
 
-//abstract empêche l'instanciation directe
+// Chaque exception métier porte son propre code HTTP : GlobalExceptionHandler n'a pas à
+// être modifié quand on en ajoute une. Abstraite : on lève toujours une fille précise.
 public abstract class SamanatteuException extends RuntimeException {
-    //Déclaration de l'attribut
     private final HttpStatus statut;
 
-    // Contructeur protected restreint l'usage du constructeur aux seules classes filles.
     protected SamanatteuException(String message, HttpStatus statut){
         super(message);
         this.statut = statut;
     }
 
-    // La méthode 
     public HttpStatus getStatut(){
         return statut;
     }

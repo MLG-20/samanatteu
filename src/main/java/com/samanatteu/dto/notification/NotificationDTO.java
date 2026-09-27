@@ -8,7 +8,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// DTO : jamais d'annotations JPA, cette classe n'est ni stockée ni lue en base.
 // destinataireId (Long) au lieu de Utilisateur : on n'expose jamais une entité complète imbriquée,
 // juste son id (sinon motDePasse fuiterait ici aussi).
 @Getter

@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// DTO : jamais d'annotations JPA, cette classe n'est ni stockée ni lue en base.
 // membreId (Long) au lieu de Utilisateur, tontineId (Long) au lieu de Tontine :
 // on n'expose jamais une entité complète imbriquée, seulement son id.
 @Getter

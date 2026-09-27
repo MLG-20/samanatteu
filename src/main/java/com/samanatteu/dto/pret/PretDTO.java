@@ -10,7 +10,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// DTO : jamais d'annotations JPA, cette classe n'est ni stockée ni lue en base.
 // membreId, tontineId, gestionnaireId (Long) au lieu des entités Utilisateur/Tontine :
 // 3 relations ManyToOne sur cette entité, chacune ramenée à son seul id. gestionnaireId
 // est notamment crucial : si on avait mis Utilisateur gestionnaire, motDePasse aurait fuité ici aussi.

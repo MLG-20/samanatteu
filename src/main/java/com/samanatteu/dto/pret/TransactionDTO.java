@@ -7,7 +7,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// DTO : jamais d'annotations JPA, cette classe n'est ni stockée ni lue en base.
 // membreId, tontineId (Long) au lieu des entités : on n'expose jamais une entité complète imbriquée.
 // referenceId reste un simple Long tel quel : dans l'entité, ce n'est pas une vraie relation JPA
 // (pas de @ManyToOne/@JoinColumn), juste une référence polymorphe (vers Cotisation OU Pret selon le type),

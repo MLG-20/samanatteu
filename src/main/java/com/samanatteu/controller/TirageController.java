@@ -25,19 +25,16 @@ public class TirageController {
         this.tirageService = tirageService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<TirageDTO> listTirages() {
         return tirageService.listTirage();
     }
 
-    // --- Créer ---
     @PostMapping
     public TirageDTO createTirage(@RequestBody Tirage tirage) {
         return tirageService.createTirage(tirage);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<TirageDTO> updatePret(@PathVariable Long id,
             @RequestBody Tirage tirageModifier) {
@@ -46,7 +43,6 @@ public class TirageController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTirage(@PathVariable Long id) {
         if (tirageService.deleteTirage(id)) {

@@ -9,7 +9,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// DTO : jamais d'annotations JPA, cette classe n'est ni stockée ni lue en base.
 // cycleId et participationId (Long) au lieu de Cycle/Participation : on n'expose jamais
 // une entité complète imbriquée, seulement son id.
 @Getter

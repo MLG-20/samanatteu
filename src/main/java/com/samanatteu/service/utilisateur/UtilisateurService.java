@@ -31,31 +31,22 @@ public class UtilisateurService {
         this.utilisateurConnecte = utilisateurConnecte;
     }
 
-    // Lister
     public List<UtilisateurDTO> listUtilisateurs() {
-        return utilisateurRepository.findAll() // 1. List<Utilisateur> brute depuis la base (avec motDePasse)
-                .stream() // 2. transforme la liste en flux traitable élément par élément
-                .map(this::convertiUtilisateurDTO) // 3. applique la conversion à CHAQUE Utilisateur -> UtilisateurDTO
-                                                   // (sans motDePasse)
-                .toList(); // 4. reconstitue une vraie List<UtilisateurDTO> à partir du flux
+        return utilisateurRepository.findAll()
+                .stream()
+                .map(this::convertiUtilisateurDTO)
+                .toList();
     }
 
-    // créer
     public UtilisateurDTO createUtilisateur(CreationUtilisateurDTO dto) {
-
+        // Seul un ADMIN peut créer un autre ADMIN (la route d'inscription est publique).
         if (dto.getRole() == RoleUtilisateur.ADMIN && !utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
             throw new AccesRefuseException();
         }
-        // AVANT de sauvegarder : on vérifie si un autre utilisateur a déjà cet email en
-        // base.
-        // existsByEmail renvoie juste un boolean (true/false), pas l'utilisateur
-        // lui-même.
+        // L'email est optionnel : son unicité n'est vérifiée que s'il est fourni
+        // (sinon existsByEmail(null) bloquerait tous les comptes sans email après le premier).
         if (dto.getEmail() != null && !dto.getEmail().isBlank()
                 && utilisateurRepository.existsByEmail(dto.getEmail())) {
-            // On lève l'exception : ça arrête immédiatement la méthode ici,
-            // les lignes save()/return en dessous ne sont jamais exécutées.
-            // C'est le GlobalExceptionHandler qui va l'attraper et renvoyer le 409 au
-            // client.
             throw new EmailDejaUtiliseException(dto.getEmail());
         }
         if (utilisateurRepository.existsByTelephone(dto.getTelephone())) {
@@ -69,13 +60,10 @@ public class UtilisateurService {
         utilisateur.setMotDePasse(passwordEncoder.encode(dto.getMotDePasse()));
         utilisateur.setRole(dto.getRole());
 
-        // Si on arrive ici, c'est que l'email est libre : on peut sauvegarder en
-        // sécurité.
         Utilisateur enregistre = utilisateurRepository.save(utilisateur);
         return convertiUtilisateurDTO(enregistre);
     }
 
-    // update
     public Optional<UtilisateurDTO> updateUtilisateur(Long id, ModificationUtilisateurDTO modifications) {
         return utilisateurRepository.findById(id).map(utilisateur -> {
             // Règle "propre profil" : seul le propriétaire du compte ou un ADMIN peut le modifier.
@@ -102,7 +90,6 @@ public class UtilisateurService {
         });
     }
 
-    // Delete
     public boolean deleteUtilisateur(Long id) {
         if (utilisateurRepository.existsById(id)) {
             utilisateurRepository.deleteById(id);

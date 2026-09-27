@@ -24,15 +24,11 @@ public class AuthService {
         this.jwtUtil = jwtUtil;
     }
 
-    // Reçoit un LoginDTO déjà validé (voir @AssertTrue sur LoginDTO : email OU
-    // téléphone garanti non-vide) et renvoie un token JWT si les identifiants
-    // sont corrects, sinon lève IdentifiantsInvalidesException (-> 401 via
-    // GlobalExceptionHandler).
+    // LoginDTO garantit (@AssertTrue) qu'un email OU un téléphone est fourni.
+    // Compte inconnu et mauvais mot de passe lèvent la même exception : un attaquant ne
+    // doit pas pouvoir savoir si un compte existe.
     public TokenDTO login(LoginDTO loginDTO) {
         Utilisateur utilisateur;
-        // On cherche l'utilisateur par email si fourni, sinon par téléphone.
-        // orElseThrow : si findByEmail/findByTelephone renvoie un Optional vide
-        // (aucun utilisateur trouvé), on lève l'exception immédiatement.
         if (loginDTO.getEmail() != null && !loginDTO.getEmail().isBlank()) {
             utilisateur = utilisateurRepository.findByEmail(loginDTO.getEmail())
                     .orElseThrow(() -> new IdentifiantsInvalidesException());
@@ -40,16 +36,10 @@ public class AuthService {
             utilisateur = utilisateurRepository.findByTelephone(loginDTO.getTelephone())
                     .orElseThrow(() -> new IdentifiantsInvalidesException());
         }
-        // Le mot de passe en base est haché (BCrypt) : matches() compare le mot de
-        // passe en clair envoyé par le client avec le hash stocké, sans jamais
-        // déchiffrer ce dernier (le hachage n'est pas réversible).
         boolean motDePasseValide = passwordEncoder.matches(loginDTO.getMotDePasse(), utilisateur.getMotDePasse());
         if (!motDePasseValide) {
             throw new IdentifiantsInvalidesException();
         }
-        // Identifiants corrects : on génère un token JWT signé qui encode l'identité
-        // (email) et le rôle de l'utilisateur, que le client réutilisera dans le
-        // header "Authorization: Bearer <token>" pour ses prochaines requêtes.
         String accessToken = jwtUtil.generateToken(utilisateur);
         String refreshToken = jwtUtil.generateRefreshToken(utilisateur);
         return new TokenDTO(accessToken, refreshToken);

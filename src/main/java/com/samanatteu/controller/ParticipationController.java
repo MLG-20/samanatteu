@@ -27,25 +27,16 @@ public class ParticipationController {
         this.participationService = participationService;
     }
 
-    // --- Lister ---
     @GetMapping
     public List<ParticipationDTO> listParticipation() {
         return participationService.listParticipation();
     }
 
-    // --- Créer ---
     @PostMapping
-    /*
-     * @RequestBody ParticipationDTO participation — dit à Spring "prends le JSON
-     * envoyé dans le
-     * corps
-     * de la requête, et convertis-le automatiquement en objet Tontine"
-     */
     public ParticipationDTO createParticipation(@RequestBody Participation participation) {
         return participationService.createParticipation(participation);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<ParticipationDTO> updateParticipation(@PathVariable Long id,
             @RequestBody Participation participationModifier) {
@@ -54,7 +45,6 @@ public class ParticipationController {
                .orElse(ResponseEntity.notFound().build());
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteParticipation(@PathVariable Long id) {
         if (participationService.deleteParticipation(id)) {

@@ -29,19 +29,16 @@ public class UtilisateurController {
         this.utilisateurService = utilisateurService;
     }
 
-    // Lister
     @GetMapping
     public List<UtilisateurDTO> listUtilisateurs() {
         return utilisateurService.listUtilisateurs();
     }
 
-    // Créer
     @PostMapping
     public UtilisateurDTO createUtilisateur(@Valid @RequestBody CreationUtilisateurDTO dto) {
         return utilisateurService.createUtilisateur(dto);
     }
 
-    // --- Update ---
     @PutMapping("/{id}")
     public ResponseEntity<UtilisateurDTO> updateUtilisateur(@PathVariable Long id,
             @Valid @RequestBody ModificationUtilisateurDTO modifications) {
@@ -51,7 +48,6 @@ public class UtilisateurController {
 
     }
 
-    // --- DELETE ---
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUtilisateur(@PathVariable Long id) {
         if (utilisateurService.deleteUtilisateur(id)) {
