@@ -61,4 +61,8 @@ public class Tontine {
     @ManyToOne
     @JoinColumn(name = "gestionnaire_id")
     private Utilisateur gestionnaire;
+
+    public boolean estGereePar(String telephone) {
+        return gestionnaire.getTelephone().equals(telephone);
+    }
 }

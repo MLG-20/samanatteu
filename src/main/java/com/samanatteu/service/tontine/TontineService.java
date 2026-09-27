@@ -107,8 +107,7 @@ public class TontineService {
     }
 
     private void verifierProprietaire(Tontine tontine) {
-
-        if (!utilisateurConnecte.telephone().equals(tontine.getGestionnaire().getTelephone())) {
+        if (!tontine.estGereePar(utilisateurConnecte.telephone())) {
             throw new AccesRefuseException();
         }
     }
