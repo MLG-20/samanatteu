@@ -186,7 +186,7 @@ Controller  ──▶  Service  ──▶  Repository  ──▶  PostgreSQL
 ```
 src/main/java/com/samanatteu/
 ├── config/        SecurityConfig (règles d'accès par route et par rôle)
-├── security/      JwtUtil, JwtAuthFilter, gestionnaires d'erreur 401 / 403
+├── security/      JwtUtil, JwtAuthFilter, gestionnaires d'erreur 401 / 403, UtilisateurConnecte
 ├── controller/    un contrôleur REST par ressource
 ├── service/       logique métier, regroupée par domaine
 │   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
@@ -204,6 +204,12 @@ Choix notables :
 - **Une exception métier = un code HTTP**, portée par la classe elle-même ; le
   `GlobalExceptionHandler` n'a pas à être modifié pour en ajouter une.
 - **Le schéma est validé, pas généré** (`ddl-auto: validate`) : la base fait foi.
+- **Les services ne dépendent pas de Spring Security** : ils demandent « qui est connecté ? » et
+  « a-t-il tel rôle ? » à `UtilisateurConnecte` (`telephone()`, `aLeRole(RoleUtilisateur)`), seul
+  endroit, avec `JwtAuthFilter`, à toucher au `SecurityContextHolder`.
+- **Une règle sur une entité vit dans l'entité** : « cette tontine est-elle gérée par tel
+  utilisateur ? » est `Tontine.estGereePar(telephone)`, utilisée par les services de tontines et de
+  participations.
 
 ## Sécurité
 
@@ -303,6 +309,15 @@ reste lisible.
   profil (`ModificationUtilisateurDTO` : `nom`, `prenom`, `email`). Changer de rôle relèvera d'une
   action d'administration dédiée ; changer de téléphone (l'identité du JWT) d'une vérification par
   SMS.
+- **Un seul point de lecture de l'utilisateur connecté.** Trois services lisaient eux-mêmes
+  `SecurityContextHolder` et comparaient des chaînes `"ROLE_..."` écrites à la main (une faute de
+  frappe y compile sans erreur). `UtilisateurConnecte` les remplace, avec l'enum `RoleUtilisateur`
+  en paramètre. Refonte faite sans modifier les tests existants (injection d'un `@Spy` réel), ce
+  qui prouve que le comportement n'a pas changé.
+- **Deux `verifierProprietaire` identiques sont gardés volontairement.** La règle elle-même
+  (`Tontine.estGereePar`) n'existe qu'à un endroit ; il ne reste dans les services que son usage
+  (« sinon 403 »). Les fusionner rendrait `ParticipationService` dépendant de `TontineService` pour
+  trois lignes. On factorisera au troisième usage (règle de trois).
 - **« Pas d'email » s'écrit toujours `null`, jamais `""`.** L'email est optionnel et unique en base :
   si des chaînes vides étaient stockées, deux comptes sans email entreraient en conflit. L'entrée est
   normalisée (vide ou blanc → `null`) avant toute vérification.
