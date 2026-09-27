@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -32,6 +33,7 @@ import com.samanatteu.exception.TransitionStatutInvalideException;
 import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
 @ExtendWith(MockitoExtension.class)
 class TontineServiceTest {
@@ -43,6 +45,9 @@ class TontineServiceTest {
     // Sert à la lecture "mes tontines" du MEMBRE (les tontines où il a une participation).
     @Mock
     private ParticipationRepository participationRepository;
+    // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
+    @Spy
+    private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
     @InjectMocks
     private TontineService tontineService;

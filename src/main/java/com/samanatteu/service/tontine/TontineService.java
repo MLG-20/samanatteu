@@ -4,14 +4,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.Participation;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.enums.RoleUtilisateur;
 import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.TontineNonModifiableException;
@@ -19,29 +18,30 @@ import com.samanatteu.exception.TransitionStatutInvalideException;
 import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
 public class TontineService {
     private final TontineRepository tontineRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final ParticipationRepository participationRepository;
+    private final UtilisateurConnecte utilisateurConnecte;
 
     public TontineService(TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository,
-            ParticipationRepository participationRepository) {
+            ParticipationRepository participationRepository, UtilisateurConnecte utilisateurConnecte) {
         this.tontineRepository = tontineRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.participationRepository = participationRepository;
+        this.utilisateurConnecte = utilisateurConnecte;
     }
 
     // Lister
     public List<TontineDTO> listTontine() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean estGestionnaire = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_GESTIONNAIRE"));
+        boolean estGestionnaire = utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE);
 
         List<Tontine> tontines = estGestionnaire
-                ? tontineRepository.findByGestionnaireTelephone(auth.getName())
-                : participationRepository.findByMembreTelephone(auth.getName())
+                ? tontineRepository.findByGestionnaireTelephone(utilisateurConnecte.telephone())
+                : participationRepository.findByMembreTelephone(utilisateurConnecte.telephone())
                         .stream()
                         .map(Participation::getTontine)
                         .toList();
@@ -54,9 +54,8 @@ public class TontineService {
 
     // créer
     public TontineDTO createTontine(Tontine tontine) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        Utilisateur gestionnaire = utilisateurRepository.findByTelephone(auth.getName())
-                .orElseThrow(() -> new AccesRefuseException());
+        Utilisateur gestionnaire = utilisateurRepository.findByTelephone(utilisateurConnecte.telephone())
+                .orElseThrow(AccesRefuseException::new);
         tontine.setGestionnaire(gestionnaire);
         tontine.setStatut(StatutTontine.EN_ATTENTE);
         Tontine enregistre = tontineRepository.save(tontine);
@@ -108,8 +107,8 @@ public class TontineService {
     }
 
     private void verifierProprietaire(Tontine tontine) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (!auth.getName().equals(tontine.getGestionnaire().getTelephone())) {
+
+        if (!utilisateurConnecte.telephone().equals(tontine.getGestionnaire().getTelephone())) {
             throw new AccesRefuseException();
         }
     }

@@ -5,14 +5,13 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.tontine.ParticipationDTO;
 import com.samanatteu.entity.Participation;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.enums.RoleUtilisateur;
 import com.samanatteu.enums.StatutParticipation;
 import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
@@ -25,28 +24,32 @@ import com.samanatteu.exception.TontineIntrouvableException;
 import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
 public class ParticipationService {
     private final ParticipationRepository participationRepository;
     private final TontineRepository tontineRepository;
     private final UtilisateurRepository utilisateurRepository;
+    private final UtilisateurConnecte utilisateurConnecte;
 
     public ParticipationService(ParticipationRepository participationRepository,
-            TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository) {
+            TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository,
+            UtilisateurConnecte utilisateurConnecte) {
         this.participationRepository = participationRepository;
         this.tontineRepository = tontineRepository;
         this.utilisateurRepository = utilisateurRepository;
+        this.utilisateurConnecte = utilisateurConnecte;
     }
 
     // Lister
     public List<ParticipationDTO> listParticipation() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean estGestionnaire = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_GESTIONNAIRE"));
+
+        boolean estGestionnaire = utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE);
+
         List<Participation> participations = estGestionnaire
-                ? participationRepository.findByTontineGestionnaireTelephone(auth.getName())
-                : participationRepository.findByMembreTelephone(auth.getName());
+                ? participationRepository.findByTontineGestionnaireTelephone(utilisateurConnecte.telephone())
+                : participationRepository.findByMembreTelephone(utilisateurConnecte.telephone());
         return participations.stream()
                 .map(this::convertiParticipationDTO) // 3. applique la conversion à CHAQUE Participation ->
                                                      // ParticipationDTO
@@ -77,9 +80,12 @@ public class ParticipationService {
         // 403).
         verifierProprietaire(tontine);
 
-        // 3b. Même principe que pour la tontine : le membre du JSON n'est qu'un {id: 30}
-        // fabriqué par le client. On va chercher le vrai membre en base. S'il n'existe pas
-        // -> 404 propre (sinon la base refuserait l'enregistrement et le client recevrait un 500).
+        // 3b. Même principe que pour la tontine : le membre du JSON n'est qu'un {id:
+        // 30}
+        // fabriqué par le client. On va chercher le vrai membre en base. S'il n'existe
+        // pas
+        // -> 404 propre (sinon la base refuserait l'enregistrement et le client
+        // recevrait un 500).
         Utilisateur membre = utilisateurRepository.findById(participation.getMembre().getId())
                 .orElseThrow(() -> new MembreIntrouvableException());
         // 4. Pas de doublon : ce membre ne doit pas déjà être inscrit à cette tontine
@@ -147,8 +153,8 @@ public class ParticipationService {
     }
 
     private void verifierProprietaire(Tontine tontine) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (!auth.getName().equals(tontine.getGestionnaire().getTelephone())) {
+
+        if (!utilisateurConnecte.telephone().equals(tontine.getGestionnaire().getTelephone())) {
             throw new AccesRefuseException();
         }
     }

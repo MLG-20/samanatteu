@@ -21,6 +21,7 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -42,6 +43,7 @@ import com.samanatteu.exception.TontineIntrouvableException;
 import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
 // Tests des règles de ParticipationService, avec de faux repositories (Mockito) : ni base ni serveur.
 // Convention des données : le gestionnaire propriétaire de la tontine 6 a le téléphone 770000101 ;
@@ -56,6 +58,9 @@ class ParticipationServiceTest {
     // Sert à vérifier que le membre existe (le membre du JSON n'est qu'un {id} fabriqué par le client).
     @Mock
     private UtilisateurRepository utilisateurRepository;
+    // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
+    @Spy
+    private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
     @InjectMocks
     private ParticipationService participationService;

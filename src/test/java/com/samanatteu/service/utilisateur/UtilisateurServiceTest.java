@@ -19,12 +19,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.ModificationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.Utilisateur;
@@ -32,6 +35,7 @@ import com.samanatteu.enums.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.EmailDejaUtiliseException;
 import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
 @ExtendWith(MockitoExtension.class)
 class UtilisateurServiceTest {
@@ -40,6 +44,9 @@ class UtilisateurServiceTest {
     private UtilisateurRepository utilisateurRepository;
     @Mock
     private PasswordEncoder passwordEncoder;
+    // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
+    @Spy
+    private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
     @InjectMocks
     private UtilisateurService utilisateurService;
@@ -53,6 +60,44 @@ class UtilisateurServiceTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(telephone, null,
                         List.of(new SimpleGrantedAuthority("ROLE_MEMBRE"))));
+    }
+
+    // Une inscription est faite par quelqu'un qui n'a pas encore de compte : Spring Security
+    // le représente par un jeton "anonyme", sans rôle ADMIN/GESTIONNAIRE/MEMBRE.
+    private void connecterCommeAnonyme() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new AnonymousAuthenticationToken("cle", "anonymousUser",
+                        List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
+    }
+
+    private CreationUtilisateurDTO inscription(RoleUtilisateur role) {
+        CreationUtilisateurDTO dto = new CreationUtilisateurDTO();
+        dto.setNom("Fall");
+        dto.setPrenom("Moussa");
+        dto.setTelephone("775550000");
+        dto.setMotDePasse("motdepasse123");
+        dto.setRole(role);
+        return dto;
+    }
+
+    @Test
+    void createUtilisateur_accepteUnMembreAnonyme() {
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        connecterCommeAnonyme();
+
+        UtilisateurDTO resultat = utilisateurService.createUtilisateur(inscription(RoleUtilisateur.MEMBRE));
+
+        assertEquals(RoleUtilisateur.MEMBRE, resultat.getRole());
+    }
+
+    @Test
+    void createUtilisateur_refuseUnAdminDemandeParUnAnonyme() {
+        connecterCommeAnonyme();
+
+        assertThrows(AccesRefuseException.class,
+                () -> utilisateurService.createUtilisateur(inscription(RoleUtilisateur.ADMIN)));
+
+        verify(utilisateurRepository, never()).save(any());
     }
 
     private Utilisateur membreEnBase(String telephone, String email) {

@@ -3,8 +3,6 @@ package com.samanatteu.service.utilisateur;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -17,16 +15,20 @@ import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.EmailDejaUtiliseException;
 import com.samanatteu.exception.TelephoneDejaUtiliseException;
 import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
 public class UtilisateurService {
 
     private final PasswordEncoder passwordEncoder;
     private final UtilisateurRepository utilisateurRepository;
+    private final UtilisateurConnecte utilisateurConnecte;
 
-    public UtilisateurService(UtilisateurRepository utilisateurRepository, PasswordEncoder passwordEncoder) {
+    public UtilisateurService(UtilisateurRepository utilisateurRepository, PasswordEncoder passwordEncoder,
+            UtilisateurConnecte utilisateurConnecte) {
         this.utilisateurRepository = utilisateurRepository;
         this.passwordEncoder = passwordEncoder;
+        this.utilisateurConnecte = utilisateurConnecte;
     }
 
     // Lister
@@ -41,13 +43,8 @@ public class UtilisateurService {
     // créer
     public UtilisateurDTO createUtilisateur(CreationUtilisateurDTO dto) {
 
-        if (dto.getRole() == RoleUtilisateur.ADMIN) {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            boolean estAdmin = auth.getAuthorities().stream()
-                    .anyMatch(autorite -> autorite.getAuthority().equals("ROLE_ADMIN"));
-            if (!estAdmin) {
-                throw new AccesRefuseException();
-            }
+        if (dto.getRole() == RoleUtilisateur.ADMIN && !utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
+            throw new AccesRefuseException();
         }
         // AVANT de sauvegarder : on vérifie si un autre utilisateur a déjà cet email en
         // base.
@@ -81,11 +78,9 @@ public class UtilisateurService {
     // update
     public Optional<UtilisateurDTO> updateUtilisateur(Long id, ModificationUtilisateurDTO modifications) {
         return utilisateurRepository.findById(id).map(utilisateur -> {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            boolean estAdmin = auth.getAuthorities().stream()
-                    .anyMatch(autorite -> autorite.getAuthority().equals("ROLE_ADMIN"));
             // Règle "propre profil" : seul le propriétaire du compte ou un ADMIN peut le modifier.
-            if (!auth.getName().equals(utilisateur.getTelephone()) && !estAdmin) {
+            if (!utilisateurConnecte.telephone().equals(utilisateur.getTelephone()) &&
+                    !utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
                 throw new AccesRefuseException();
             }
 
