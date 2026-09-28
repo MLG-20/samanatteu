@@ -213,8 +213,9 @@ Choix notables :
 
 ## Sécurité
 
-- **JWT** : access token de 15 minutes + refresh token de 7 jours (un claim `type` empêche de
-  confondre les deux). L'identité du token est le **numéro de téléphone**, car l'email est optionnel.
+- **JWT** : access token de 15 minutes + refresh token de 7 jours. Un claim `type` (`access` /
+  `refresh`) empêche de confondre les deux, **dans les deux sens** : `/auth/refresh` n'accepte que
+  `refresh`, et le filtre JWT n'authentifie une requête qu'avec `access` (liste blanche). L'identité du token est le **numéro de téléphone**, car l'email est optionnel.
 - **Rôle dans le token** : traduit en autorité Spring (`ROLE_ADMIN`, `ROLE_GESTIONNAIRE`,
   `ROLE_MEMBRE`) par `JwtAuthFilter`.
 - **Autorisation à deux niveaux** : le rôle est vérifié dans `SecurityConfig`, puis la **propriété de
@@ -227,7 +228,7 @@ Choix notables :
 
 ```bash
 # Tests unitaires et de sécurité (sans base de données)
-./mvnw test -Dtest='*ServiceTest,*ControllerSecurityTest'
+./mvnw test -Dtest='*ServiceTest,*ControllerSecurityTest,JwtAuthFilterTest'
 ```
 
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest` : règles métier des
@@ -236,6 +237,9 @@ Choix notables :
   modifiables d'un profil.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest` : règles d'accès HTTP de
   `SecurityConfig` (401 / 403 / 200 / 204 / 404) avec MockMvc, sans serveur ni base.
+- `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
+  token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
+  traversent pas ce filtre.
 
 > `SamanatteuApplicationTests` (chargement complet du contexte) nécessite PostgreSQL et les variables
 > d'environnement ; il n'est donc pas inclus dans la commande ci-dessus.
@@ -323,6 +327,15 @@ reste lisible.
   normalisée (vide ou blanc → `null`) avant toute vérification.
 
 ### Bugs trouvés et corrigés
+
+- **Un refresh token servait d'access token pendant 7 jours.** Le filtre JWT acceptait tout token
+  correctement signé, sans lire son `type` : un refresh token (sans rôle, valable 7 jours) donnait
+  accès à toutes les routes qui exigent seulement d'être connecté, ce qui annulait l'intérêt d'un
+  access token court. `/auth/refresh` vérifiait le type, mais pas le sens inverse. Corrigé en
+  marquant les access tokens `"type": "access"` et en n'authentifiant **que** ce type (liste
+  blanche : un futur type de token sera refusé par défaut). Trouvé en relisant le filtre pendant le
+  nettoyage des commentaires ; aucun test ne le couvrait, car les tests MockMvc ne passent pas par
+  le filtre — d'où `JwtAuthFilterTest`, avec de vrais tokens.
 
 - **Élévation de privilèges : un `MEMBRE` pouvait se rendre `ADMIN`.** `PUT /utilisateur/{id}`
   recevait l'entité `Utilisateur` et recopiait tous ses champs, dont `role` et `actif`, sur le compte

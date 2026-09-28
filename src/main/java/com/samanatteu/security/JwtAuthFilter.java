@@ -38,11 +38,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             // remonterait jusqu'au conteneur : GlobalExceptionHandler ne voit que les
             // contrôleurs, pas les filtres, et le client recevrait une erreur vide.
             try {
-                String telephone = jwtUtil.extractTelephone(token);
-                SimpleGrantedAuthority authorite = new SimpleGrantedAuthority("ROLE_" + jwtUtil.extractRole(token));
-                UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(telephone,
-                        null, List.of(authorite));
-                SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                // Seul un access token authentifie une requête : un refresh token (7 jours)
+                // ne doit servir qu'à /auth/refresh.
+                if ("access".equals(jwtUtil.extractType(token))) {
+                    String telephone = jwtUtil.extractTelephone(token);
+                    SimpleGrantedAuthority authorite = new SimpleGrantedAuthority("ROLE_" + jwtUtil.extractRole(token));
+                    UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
+                            telephone, null, List.of(authorite));
+                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                }
             } catch (io.jsonwebtoken.JwtException e) {
                 // Token invalide : la requête continue en anonyme.
             }

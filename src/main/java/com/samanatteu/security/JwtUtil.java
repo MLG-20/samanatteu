@@ -39,6 +39,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .subject(utilisateur.getTelephone())
                 .claim("role", utilisateur.getRole())
+                .claim("type", "access")
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key)
@@ -48,7 +49,8 @@ public class JwtUtil {
     public String generateRefreshToken(Utilisateur utilisateur) {
         return Jwts.builder()
                 .subject(utilisateur.getTelephone())
-                // Marque le token comme "refresh" pour qu'il ne soit pas confondu avec un access token.
+                // Marque le token comme "refresh" pour qu'il ne soit pas confondu avec
+                // un access token.
                 .claim("type", "refresh")
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
@@ -76,12 +78,12 @@ public class JwtUtil {
                 .get("role", String.class);
     }
 
-    public  String extractType(String token){
+    public String extractType(String token) {
         return Jwts.parser()
-        .verifyWith(key)
-        .build()
-        .parseSignedClaims(token)
-        .getPayload()
-        .get("type", String.class);
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .get("type", String.class);
     }
 }
