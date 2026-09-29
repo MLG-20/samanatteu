@@ -2,19 +2,18 @@ package com.samanatteu.controller;
 
 import java.util.List;
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.cotisation.TirageDTO;
-import com.samanatteu.entity.Tirage;
+import com.samanatteu.dto.cotisation.VersementDTO;
 import com.samanatteu.service.cotisation.TirageService;
+
+import jakarta.validation.Valid;
 
 @RequestMapping("/tirage")
 @RestController
@@ -30,24 +29,20 @@ public class TirageController {
         return tirageService.listTirage();
     }
 
-    @PostMapping
-    public TirageDTO createTirage(@RequestBody Tirage tirage) {
-        return tirageService.createTirage(tirage);
+    // Remise d'argent au gagnant du tirage {id} (id de TIRAGE : d'où /tirage).
+    // @RequestBody lit le JSON ; @Valid applique @NotNull/@Positive du DTO
+    // AVANT le service (sinon 400). Refus = exceptions (404/403/400).
+    @PostMapping("/{id}/verser")
+    public TirageDTO verser(@PathVariable Long id,
+            @Valid @RequestBody VersementDTO versement) {
+        return tirageService.verser(id, versement);
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<TirageDTO> updatePret(@PathVariable Long id,
-            @RequestBody Tirage tirageModifier) {
-        return tirageService.updateTirage(id, tirageModifier)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    // Reporte le versement du tirage {id}. Pas de corps : rien à choisir
+    // côté client. Refus = exceptions (404/403/409).
+    @PostMapping("/{id}/reporter")
+    public TirageDTO reporter(@PathVariable Long id) {
+        return tirageService.reporter(id);
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTirage(@PathVariable Long id) {
-        if (tirageService.deleteTirage(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
-    }
 }

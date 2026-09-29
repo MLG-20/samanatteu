@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.onboarding.ImportMembreDTO;
 import com.samanatteu.entity.ImportMembre;
-import com.samanatteu.exception.ImportIncoherentException;
+import com.samanatteu.exception.onboarding.ImportIncoherentException;
 import com.samanatteu.repository.ImportMembreRepository;
 
 @Service 

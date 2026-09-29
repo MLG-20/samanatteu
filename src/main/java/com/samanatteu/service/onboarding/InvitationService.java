@@ -9,8 +9,8 @@ import org.springframework.stereotype.Service;
 import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.entity.Invitation;
 import com.samanatteu.enums.StatutInvitation;
-import com.samanatteu.exception.InvitationDejaUtiliseeException;
-import com.samanatteu.exception.InvitationExpireeException;
+import com.samanatteu.exception.onboarding.InvitationDejaUtiliseeException;
+import com.samanatteu.exception.onboarding.InvitationExpireeException;
 import com.samanatteu.repository.InvitationRepository;
 
 @Service

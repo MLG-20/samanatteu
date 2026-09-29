@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict AvEZGs7IlAgCPM0l3Q6BgM1dMQwleZI55tizZpswKcEE1lBSMpDogsWw4NADehp
+\restrict o1PaO0z2KfSHaXd3J63k7vD2oqr9qUDUfVG8P8uzrDz2yihtS6Zx4IlNCa9h3MO
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -323,7 +323,8 @@ CREATE TABLE public.tirage (
     date_tirage timestamp without time zone,
     date_versement timestamp without time zone,
     statut character varying(20),
-    created_at timestamp without time zone
+    created_at timestamp without time zone,
+    montant_verse numeric(15,2) DEFAULT 0 NOT NULL
 );
 
 
@@ -795,5 +796,5 @@ ALTER TABLE ONLY public.transaction
 -- PostgreSQL database dump complete
 --
 
-\unrestrict AvEZGs7IlAgCPM0l3Q6BgM1dMQwleZI55tizZpswKcEE1lBSMpDogsWw4NADehp
+\unrestrict o1PaO0z2KfSHaXd3J63k7vD2oqr9qUDUfVG8P8uzrDz2yihtS6Zx4IlNCa9h3MO
 

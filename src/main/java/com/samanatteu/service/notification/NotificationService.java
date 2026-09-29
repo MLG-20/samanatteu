@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import com.samanatteu.dto.notification.NotificationDTO;
 import com.samanatteu.entity.Notification;
 import com.samanatteu.enums.StatutNotification;
-import com.samanatteu.exception.EnvoiNotificationEchoueException;
+import com.samanatteu.exception.notification.EnvoiNotificationEchoueException;
 import com.samanatteu.repository.NotificationRepository;
 
 @Service 

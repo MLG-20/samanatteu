@@ -40,6 +40,9 @@ public class Tirage {
     @Column(name = "montant_gagne")
     private BigDecimal montantGagne;
 
+    @Column(name = "montant_verse")
+    private BigDecimal montantVerse;
+
     @Column(name = "date_tirage")
     private LocalDateTime dateTirage;
 

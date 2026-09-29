@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import com.samanatteu.dto.pret.PretDTO;
 import com.samanatteu.entity.Pret;
 import com.samanatteu.enums.StatutPret;
-import com.samanatteu.exception.PretDejaEnCoursException;
+import com.samanatteu.exception.pret.PretDejaEnCoursException;
 import com.samanatteu.repository.PretRepository;
 
 @Service

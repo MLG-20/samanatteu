@@ -7,8 +7,8 @@ import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.pret.EcheancePretDTO;
 import com.samanatteu.entity.EcheancePret;
-import com.samanatteu.exception.MontantPayeSuperieurAuDuException;
-import com.samanatteu.exception.NumeroEcheanceDejaExistantException;
+import com.samanatteu.exception.cotisation.MontantPayeSuperieurAuDuException;
+import com.samanatteu.exception.pret.NumeroEcheanceDejaExistantException;
 import com.samanatteu.repository.EcheancePretRepository;
 
 @Service 

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.pret.TransactionDTO;
 import com.samanatteu.entity.Transaction;
-import com.samanatteu.exception.MontantInvalideException;
+import com.samanatteu.exception.cotisation.MontantInvalideException;
 import com.samanatteu.repository.TransactionRepository;
 
 @Service

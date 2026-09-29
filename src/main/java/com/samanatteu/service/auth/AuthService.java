@@ -7,8 +7,8 @@ import com.samanatteu.dto.auth.LoginDTO;
 import com.samanatteu.dto.auth.RefreshRequestDTO;
 import com.samanatteu.dto.auth.TokenDTO;
 import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.exception.IdentifiantsInvalidesException;
-import com.samanatteu.exception.RefreshTokenInvalideException;
+import com.samanatteu.exception.auth.IdentifiantsInvalidesException;
+import com.samanatteu.exception.auth.RefreshTokenInvalideException;
 import com.samanatteu.repository.UtilisateurRepository;
 import com.samanatteu.security.JwtUtil;
 

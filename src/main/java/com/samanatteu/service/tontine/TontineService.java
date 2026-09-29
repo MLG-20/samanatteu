@@ -11,10 +11,12 @@ import com.samanatteu.entity.Participation;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
 import com.samanatteu.enums.RoleUtilisateur;
+import com.samanatteu.enums.StatutParticipation;
 import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
-import com.samanatteu.exception.TontineNonModifiableException;
-import com.samanatteu.exception.TransitionStatutInvalideException;
+import com.samanatteu.exception.tontine.TontineNonModifiableException;
+import com.samanatteu.exception.tontine.TontineSansMembreException;
+import com.samanatteu.exception.tontine.TransitionStatutInvalideException;
 import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
@@ -55,6 +57,10 @@ public class TontineService {
                 .orElseThrow(AccesRefuseException::new);
         tontine.setGestionnaire(gestionnaire);
         tontine.setStatut(StatutTontine.EN_ATTENTE);
+        // 0 = « pas encore calculé » (colonne NOT NULL) : nbCycles se déduit
+        // des parts des membres, calculé par le serveur à l'activation.
+        // Écrase ce que le client aurait envoyé dans le JSON.
+        tontine.setNbCycles(0);
         Tontine enregistre = tontineRepository.save(tontine);
         return convertiTontineDTO(enregistre);
     }
@@ -70,7 +76,6 @@ public class TontineService {
             tontineExsitant.setMontantPart(tontineModifier.getMontantPart());
             tontineExsitant.setFrequence(tontineModifier.getFrequence());
             tontineExsitant.setIntervalle(tontineModifier.getIntervalle());
-            tontineExsitant.setNbCycles(tontineModifier.getNbCycles());
             tontineExsitant.setDescription(tontineModifier.getDescription());
             tontineExsitant.setJourCotisation(tontineModifier.getJourCotisation());
             Tontine enregistre = tontineRepository.save(tontineExsitant);
@@ -106,6 +111,29 @@ public class TontineService {
             if (!Arrays.asList(autorises).contains(tontine.getStatut())) {
                 throw new TransitionStatutInvalideException(tontine.getStatut(), nouveau);
             }
+
+            // 1re activation seulement (EN_ATTENTE → ACTIVE) : nbCycles se
+            // fixe UNE fois au lancement. Une reprise (SUSPENDUE → ACTIVE) ne
+            // recalcule pas : des cycles ont déjà eu lieu. Placé APRÈS le
+            // contrôle de transition et AVANT le save (sinon non enregistré).
+            if (tontine.getStatut() == StatutTontine.EN_ATTENTE && nouveau == StatutTontine.ACTIVE) {
+                // Modèle B : une part = un gain = un cycle, donc
+                // nbCycles = somme des parts des membres ACTIF.
+                // mapToInt donne un flux de nombres (IntStream) qui sait
+                // faire sum() ; map donnerait des Integer, sans sum().
+                int totalParts = participationRepository
+                        .findByTontineIdAndStatut(tontine.getId(), StatutParticipation.ACTIF)
+                        .stream()
+                        .mapToInt(Participation::getNombreParts)
+                        .sum();
+                // Refus au plus tôt, là où est la vraie cause : sinon
+                // ouvrirCycle échouerait plus tard avec « 0 cycles prévus ».
+                if (totalParts == 0) {
+                    throw new TontineSansMembreException();
+                }
+                tontine.setNbCycles(totalParts);
+            }
+
             tontine.setStatut(nouveau);
             return convertiTontineDTO(tontineRepository.save(tontine));
         });

@@ -23,6 +23,8 @@ public class TirageDTO {
 
     private BigDecimal montantGagne;
 
+    private BigDecimal montantVerse;
+
     private LocalDateTime dateTirage;
 
     private LocalDateTime dateVersement;

@@ -10,7 +10,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.samanatteu.dto.cotisation.TirageDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
+import com.samanatteu.service.cotisation.TirageService;
 import com.samanatteu.service.tontine.CycleService;
 
 @RequestMapping("/cycle")
@@ -18,14 +20,23 @@ import com.samanatteu.service.tontine.CycleService;
 public class CycleController {
 
     private final CycleService cycleService;
+    private final TirageService tirageService;
 
-    public CycleController(CycleService cycleService) {
+    public CycleController(CycleService cycleService, TirageService tirageService) {
         this.cycleService = cycleService;
+        this.tirageService = tirageService;
     }
 
     @GetMapping
     public List<CycleDTO> listCycle() {
         return cycleService.listCycle();
+    }
+
+    // Tire au sort le gagnant du cycle {id} (id de CYCLE : d'où /cycle).
+    // Pas de corps : gagnant, montant et statut sont décidés par le serveur.
+    @PostMapping("/{id}/tirage")
+    public TirageDTO tirerAuSort(@PathVariable Long id) {
+        return tirageService.tirerAuSort(id);
     }
 
     // Clôture le cycle {id} : pas de corps, tout est décidé par CycleService.
