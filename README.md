@@ -126,7 +126,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `GET` | `/tontine` | `GESTIONNAIRE` | liste **ses** tontines uniquement |
 | `PUT` | `/tontine/{id}` | propriétaire | modifie la tontine, **seulement tant qu'elle est `EN_ATTENTE`** |
 | `DELETE` | `/tontine/{id}` | propriétaire | supprime la tontine |
-| `POST` | `/tontine/{id}/activer` | propriétaire | `EN_ATTENTE` ou `SUSPENDUE` → `ACTIVE` |
+| `POST` | `/tontine/{id}/activer` | propriétaire | `EN_ATTENTE` ou `SUSPENDUE` → `ACTIVE` ; la 1re activation calcule `nbCycles` |
 | `POST` | `/tontine/{id}/suspendre` | propriétaire | `ACTIVE` → `SUSPENDUE` |
 | `POST` | `/tontine/{id}/cloturer` | propriétaire | `ACTIVE` → `TERMINEE` (état final) |
 | `POST` | `/tontine/{id}/cycles` | propriétaire | ouvre le cycle suivant (voir *Cycles et cotisations*) |
@@ -140,6 +140,11 @@ EN_ATTENTE ──activer──▶ ACTIVE ──suspendre──▶ SUSPENDUE
 ```
 
 Le statut ne se modifie que par ces actions : un `statut` envoyé dans un `POST` ou un `PUT` est ignoré.
+
+`nbCycles` n'est pas saisi non plus : il vaut `0` à la création (« pas encore calculé ») et la
+**première activation** le fixe à la somme des parts des membres actifs (une part = un gain = un
+cycle). Activer une tontine sans membre est refusé (409). Une reprise (`SUSPENDUE` → `ACTIVE`) ne
+le recalcule pas.
 
 ### Participations (implémenté, testé)
 
@@ -193,9 +198,45 @@ cotisation : EN_ATTENTE ──paiement──▶ PARTIEL ──paiement──▶ 
                  └──── clôture ──▶ EN_RETARD ──paiement (solde)─┘
 ```
 
+### Tirages (implémenté, testé)
+
+À la fin de chaque cycle, un tirage au sort désigne le membre qui reçoit **toute la cagnotte**.
+Une part = un gain : un membre à deux parts (*gnari lokho*) gagne deux fois, à deux cycles
+différents.
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `POST` | `/cycle/{id}/tirage` | propriétaire | tire au sort le gagnant du cycle, **sans corps** |
+| `POST` | `/tirage/{id}/verser` | propriétaire | enregistre une remise d'argent au gagnant (`{"montant":…}`) |
+| `POST` | `/tirage/{id}/reporter` | propriétaire | met le versement en pause (arrangement entre membres) |
+| `GET` | `/tirage` | `GESTIONNAIRE`, `MEMBRE` | un gestionnaire voit les tirages de **ses** tontines ; un membre **tous** les tirages des tontines où il participe (transparence) |
+
+Règles :
+
+- **Tirage** : seulement sur un cycle `CLOTURE` (409) et une seule fois par cycle (409). L'urne
+  contient chaque membre actif à qui il reste au moins une part non gagnée (parts − tirages déjà
+  gagnés), **une seule fois** : chance égale pour tous à chaque tirage. Urne vide → 409. Le hasard
+  vient de `SecureRandom` (imprévisible).
+- **Montants** : le gagnant a droit à la cagnotte attendue du cycle ; il reçoit tout de suite ce
+  qui est en caisse. Statut `VERSE` si tout est remis, `PARTIEL` sinon, `EN_ATTENTE` si rien.
+- **Compensation** : si le gagnant est lui-même `EN_RETARD` sur ce cycle, sa dette est payée par
+  son gain (cotisation `COMPLET`, caisse complétée).
+- **Versement** : on ne remet pas plus que l'argent en caisse pas encore remis (400). Le gestionnaire
+  l'enregistre quand la remise a **réellement** lieu.
+- **Report** : seulement `EN_ATTENTE` ou `PARTIEL` (409) ; un versement fait sortir de `REPORTE`.
+  Le gagnant ne change jamais.
+- Aucune route ne permet de créer, modifier ou supprimer un tirage à la main.
+
+```
+tirage : EN_ATTENTE ──verser──▶ PARTIEL ──verser (solde)──▶ VERSE
+             │                     │                         ▲
+             └──reporter──▶ REPORTE ◀──reporter──┘           │
+                               └──────────verser─────────────┘
+```
+
 ### Autres ressources (CRUD générique, sans règles métier pour l'instant)
 
-`/tirage`, `/pret`, `/echeancePret`, `/transaction`, `/invitation`,
+`/pret`, `/echeancePret`, `/transaction`, `/invitation`,
 `/importMembre`, `/notification`.
 
 Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
@@ -209,7 +250,8 @@ Les erreurs métier renvoient un message lisible et un code HTTP cohérent :
 | `400` | requête incomplète ou valeur invalide | nombre de parts à 0, membre sans id |
 | `401` | non authentifié / token invalide ou expiré | token absent |
 | `403` | authentifié mais pas autorisé | un `MEMBRE` qui active une tontine |
-| `404` | ressource introuvable | tontine inexistante |
+| `404` | ressource ou route introuvable | tontine inexistante |
+| `405` | méthode HTTP non prise en charge par la route | `POST /tirage` |
 | `409` | l'état actuel de la ressource bloque l'action | modifier une tontine `ACTIVE`, réactiver une tontine `TERMINEE` |
 
 ## Architecture
@@ -232,7 +274,8 @@ src/main/java/com/samanatteu/
 ├── entity/        entités JPA (12 tables)
 ├── dto/           objets d'échange avec le client (jamais l'entité brute : pas de fuite de mot de passe)
 ├── enums/         statuts et rôles
-├── exception/     exceptions métier (héritent de SamanatteuException, avec leur code HTTP)
+├── exception/     exceptions métier (héritent de SamanatteuException, avec leur code HTTP),
+│   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 └── handler/       GlobalExceptionHandler : transforme les exceptions en réponses JSON
 ```
 
@@ -271,14 +314,16 @@ Choix notables :
 ```
 
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
-  `CotisationServiceTest` : règles métier des services avec des faux repositories (Mockito) —
-  propriété, cycle de vie du statut, doublons, valeurs décidées par le serveur, identité issue du
-  token, lecture filtrée par rôle, champs modifiables d'un profil, calcul des montants dus et
-  attendus, paiements partiels, retards à la clôture.
+  `CotisationServiceTest`, `TirageServiceTest` : règles métier des services avec des faux
+  repositories (Mockito) — propriété, cycle de vie du statut, doublons, valeurs décidées par le
+  serveur, identité issue du token, lecture filtrée par rôle, champs modifiables d'un profil, calcul
+  des montants dus et attendus, paiements partiels, retards à la clôture, composition de l'urne,
+  compensation, versements et reports. Le hasard du tirage est remplacé par un faux `Random` qui
+  choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
-  `CycleControllerSecurityTest`, `CotisationControllerSecurityTest` : règles d'accès HTTP de
-  `SecurityConfig` (401 / 403 / 200 / 204 / 404) et validation des corps (400) avec MockMvc, sans
-  serveur ni base.
+  `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
+  `TirageControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
   traversent pas ce filtre.
@@ -306,13 +351,17 @@ Le développement suit un planning en 8 phases.
 | 2 | Authentification et rôles | ✅ terminée, sauf « mot de passe oublié » (nécessite l'envoi de SMS, phase 6) |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée ; reste le reçu PDF (avec l'historique des paiements) |
-| 5 | Tirage aléatoire pondéré, prêts et échéanciers | ⏳ à venir |
+| 5 | Tirage au sort, prêts et échéanciers | 🚧 tirage terminé (urne, compensation, versements, reports, `nbCycles` calculé) ; prêts et échéanciers à venir |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | ⏳ à venir |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- Les ressources autres que `/tontine`, `/participation`, `/cycle` et `/cotisation` n'ont pas encore de règles métier ni de contrôle de propriété.
+- Les ressources autres que `/tontine`, `/participation`, `/cycle`, `/cotisation` et `/tirage` n'ont pas encore de règles métier ni de contrôle de propriété.
+- Un tirage ne garde que la date de son **dernier** versement ; l'historique des remises au
+  gagnant relèvera, comme les paiements, de la table `transaction`.
+- Un corps JSON mal formé n'a pas encore de traitement dédié dans `GlobalExceptionHandler`
+  (`HttpMessageNotReadableException` n'est pas une `ErrorResponse`) : à vérifier et ramener à 400.
 - Une cotisation ne garde que le mode, la référence et la date de son **dernier** paiement :
   l'historique des paiements successifs (table `transaction`) et le reçu PDF par paiement restent à
   faire.
@@ -401,8 +450,50 @@ reste lisible.
 - **Les montants sont des `BigDecimal` comparés avec `compareTo`.** `equals` tient compte du nombre
   de décimales (`10000` ≠ `10000.00`) et aurait laissé une cotisation soldée en `PARTIEL`. Un test
   couvre ce cas précis.
+- **Le tirage se fait par part, pas par membre (écart volontaire au cahier des charges).** Le CDC
+  donne au gagnant `parts_gagnant / total_parts × montant_collecte` (R2) et interdit de tirer deux
+  fois le même membre (R3). Avec Awa (2 parts), Binta et Coumba (1 part), 10 000 F la part : Awa
+  cotiserait 80 000 F et ne recevrait que 20 000 F, et personne ne sait où irait le reste. Le modèle
+  retenu, validé auprès de personnes qui pratiquent la tontine : **une part = un gain de toute la
+  cagnotte**. Awa gagne deux fois, à deux cycles différents. Critère de vérification : à la fin,
+  chacun a reçu exactement ce qu'il a cotisé.
+- **Chance égale à chaque tirage (écart au cahier des charges).** Le CDC prévoit qu'un membre à deux
+  parts ait deux fois plus de chances. Choix de la pratique réelle : chaque membre encore en lice
+  figure **une seule fois** dans l'urne ; ses parts fixent combien de fois il gagne, pas sa
+  probabilité de gagner.
+- **L'urne n'est pas stockée, elle est recalculée.** Tickets restants = parts − tirages déjà gagnés.
+  Un compteur à part serait une seconde source de vérité, qui finirait par contredire la table
+  `tirage`. Même principe pour `nbCycles`, qui se déduit des parts : il est calculé à la première
+  activation au lieu d'être saisi (une valeur qui n'a qu'une seule réponse correcte ne se saisit
+  pas).
+- **On ne tire qu'un cycle clôturé.** Comme en pratique : on rassemble l'argent du tour, puis on
+  tire.
+- **Retards au moment du tirage : versement en plusieurs fois et compensation.** Le gagnant a droit
+  à toute la cagnotte attendue ; il reçoit tout de suite ce qui est en caisse, le reste lui est
+  remis quand les retardataires paient. Si le gagnant est lui-même en retard, sa dette est payée
+  par son gain : lui demander de payer pour se faire rendre l'argent aussitôt n'aurait pas de sens.
+- **Un versement s'enregistre quand il a réellement lieu.** Le reverser automatiquement au paiement
+  d'un retard aurait affiché « versé » alors que l'argent était encore chez le gestionnaire. Sur une
+  plateforme dont la promesse est la transparence, `montantVerse` doit dire la vérité aux membres :
+  c'est une action manuelle, `verser`, plafonnée par l'argent disponible.
+- **Le résultat d'un tirage est définitif.** Aucune route ne crée, ne modifie ni ne supprime un
+  tirage : supprimer puis retirer permettrait de relancer le hasard jusqu'au « bon » gagnant, sans
+  trace. Le statut `REPORTE` ne met en pause que le **versement** (arrangement entre membres) ; une
+  option « annuler et retirer » a été écartée pour la même raison.
 
 ### Bugs trouvés et corrigés
+
+- **Toute erreur du client devenait une « erreur inattendue » 500.** Le filet
+  `@ExceptionHandler(Exception.class)` de `GlobalExceptionHandler` attrapait aussi les exceptions
+  par lesquelles Spring signale une route inexistante (404) ou une méthode non prise en charge
+  (405) : un client qui se trompait d'URL croyait le serveur en panne, et les logs se remplissaient
+  de fausses erreurs. Trouvé en écrivant les tests qui vérifient que les anciennes routes du tirage
+  n'existent plus. Corrigé en laissant passer les exceptions qui implémentent `ErrorResponse` avec
+  leur propre code ; le filet ne garde que les vrais bugs.
+- **Le tirage générique était une porte dérobée.** `POST`, `PUT` et `DELETE /tirage` acceptaient un
+  tirage complet envoyé par le client, sans contrôle de propriété : n'importe quel utilisateur
+  connecté pouvait se désigner gagnant, ou supprimer un tirage pour le relancer. Routes supprimées,
+  remplacées par les actions métier ci-dessus.
 
 - **N'importe quel utilisateur connecté pouvait écrire les cycles et cotisations de toutes les
   tontines.** `/cycle` et `/cotisation` n'avaient aucune règle dans `SecurityConfig` et aucun
