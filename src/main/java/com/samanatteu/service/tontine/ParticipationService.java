@@ -14,7 +14,6 @@ import com.samanatteu.entity.Utilisateur;
 import com.samanatteu.enums.RoleUtilisateur;
 import com.samanatteu.enums.StatutParticipation;
 import com.samanatteu.enums.StatutTontine;
-import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.InscriptionsFermeesException;
 import com.samanatteu.exception.MembreIntrouvableException;
 import com.samanatteu.exception.NombrePartsInvalideException;
@@ -67,7 +66,7 @@ public class ParticipationService {
         // on recharge les vrais en base (404 propre au lieu d'un 500 sur la clé étrangère).
         Tontine tontine = tontineRepository.findById(participation.getTontine().getId())
                 .orElseThrow(() -> new TontineIntrouvableException());
-        verifierProprietaire(tontine);
+        utilisateurConnecte.verifierGestionnaire(tontine);
 
         Utilisateur membre = utilisateurRepository.findById(participation.getMembre().getId())
                 .orElseThrow(() -> new MembreIntrouvableException());
@@ -96,7 +95,7 @@ public class ParticipationService {
 
     public Optional<ParticipationDTO> updateParticipation(Long id, Participation participationModifier) {
         return participationRepository.findById(id).map(existante -> {
-            verifierProprietaire(existante.getTontine());
+            utilisateurConnecte.verifierGestionnaire(existante.getTontine());
             verifierInscriptionsOuvertes(existante.getTontine());
             verifierNombreParts(participationModifier.getNombreParts());
             existante.setNombreParts(participationModifier.getNombreParts());
@@ -107,18 +106,12 @@ public class ParticipationService {
     public boolean deleteParticipation(Long id) {
         Optional<Participation> participation = participationRepository.findById(id);
         if (participation.isPresent()) {
-            verifierProprietaire(participation.get().getTontine());
+            utilisateurConnecte.verifierGestionnaire(participation.get().getTontine());
             verifierInscriptionsOuvertes(participation.get().getTontine());
             participationRepository.deleteById(id);
             return true;
         }
         return false;
-    }
-
-    private void verifierProprietaire(Tontine tontine) {
-        if (!tontine.estGereePar(utilisateurConnecte.telephone())) {
-            throw new AccesRefuseException();
-        }
     }
 
     private void verifierInscriptionsOuvertes(Tontine tontine) {

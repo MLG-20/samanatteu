@@ -1,5 +1,5 @@
 package com.samanatteu.enums;
 
 public enum StatutCycle {
-    EN_COURS, CLOTURE
+    EN_ATTENTE, EN_COURS, CLOTURE
 }

@@ -2,6 +2,8 @@ package com.samanatteu.dto.tontine;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+
+import com.samanatteu.enums.FrequenceTontine;
 import com.samanatteu.enums.StatutTontine;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,7 +21,9 @@ public class TontineDTO {
 
     private BigDecimal montantPart;
 
-    private String frequence;
+    private FrequenceTontine frequence;
+
+    private Integer intervalle;
 
     private Integer nbCycles;
 

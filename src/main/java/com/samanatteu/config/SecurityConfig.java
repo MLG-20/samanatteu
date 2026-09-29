@@ -49,6 +49,12 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/participation").hasAnyRole("GESTIONNAIRE", "MEMBRE")
                                                 .requestMatchers(HttpMethod.PUT, "/participation/**").hasRole("GESTIONNAIRE")
                                                 .requestMatchers(HttpMethod.DELETE, "/participation/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.POST, "/cycle/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.GET, "/cycle").hasAnyRole("GESTIONNAIRE", "MEMBRE")
+                                                .requestMatchers(HttpMethod.DELETE, "/cycle/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.POST, "/cotisation/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.GET, "/cotisation/**").hasAnyRole("GESTIONNAIRE", "MEMBRE")
+                                                .requestMatchers(HttpMethod.DELETE, "/cotisation/**").hasRole("GESTIONNAIRE")
                                                 .anyRequest().authenticated())
                                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
                 return http.build();

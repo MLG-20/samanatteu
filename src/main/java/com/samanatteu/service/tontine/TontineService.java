@@ -61,7 +61,7 @@ public class TontineService {
 
     public Optional<TontineDTO> updateTontine(Long id, Tontine tontineModifier) {
         return tontineRepository.findById(id).map(tontineExsitant -> {
-            verifierProprietaire(tontineExsitant);
+            utilisateurConnecte.verifierGestionnaire(tontineExsitant);
 
             if (tontineExsitant.getStatut() != StatutTontine.EN_ATTENTE) {
                 throw new TontineNonModifiableException(tontineExsitant.getStatut().toString());
@@ -69,6 +69,7 @@ public class TontineService {
             tontineExsitant.setNom(tontineModifier.getNom());
             tontineExsitant.setMontantPart(tontineModifier.getMontantPart());
             tontineExsitant.setFrequence(tontineModifier.getFrequence());
+            tontineExsitant.setIntervalle(tontineModifier.getIntervalle());
             tontineExsitant.setNbCycles(tontineModifier.getNbCycles());
             tontineExsitant.setDescription(tontineModifier.getDescription());
             tontineExsitant.setJourCotisation(tontineModifier.getJourCotisation());
@@ -80,17 +81,11 @@ public class TontineService {
     public boolean deleteTontine(Long id) {
         Optional<Tontine> tontine = tontineRepository.findById(id);
         if (tontine.isPresent()) {
-            verifierProprietaire(tontine.get());
+            utilisateurConnecte.verifierGestionnaire(tontine.get());
             tontineRepository.deleteById(id);
             return true;
         }
         return false;
-    }
-
-    private void verifierProprietaire(Tontine tontine) {
-        if (!tontine.estGereePar(utilisateurConnecte.telephone())) {
-            throw new AccesRefuseException();
-        }
     }
 
     public Optional<TontineDTO> activerTontine(Long id) {
@@ -107,7 +102,7 @@ public class TontineService {
 
     private Optional<TontineDTO> changerStatut(Long id, StatutTontine nouveau, StatutTontine... autorises) {
         return tontineRepository.findById(id).map(tontine -> {
-            verifierProprietaire(tontine);
+            utilisateurConnecte.verifierGestionnaire(tontine);
             if (!Arrays.asList(autorises).contains(tontine.getStatut())) {
                 throw new TransitionStatutInvalideException(tontine.getStatut(), nouveau);
             }
@@ -122,6 +117,7 @@ public class TontineService {
         dto.setNom(tontine.getNom());
         dto.setMontantPart(tontine.getMontantPart());
         dto.setFrequence(tontine.getFrequence());
+        dto.setIntervalle(tontine.getIntervalle());
         dto.setNbCycles(tontine.getNbCycles());
         dto.setDescription(tontine.getDescription());
         dto.setJourCotisation(tontine.getJourCotisation());

@@ -1,0 +1,8 @@
+# Profil « test » : mêmes réglages que application.yaml, sauf la base.
+# Activé avec --spring.profiles.active=test (app de test sur 8081, tests
+# d'intégration). La base normale « samanatteu » n'est jamais touchée.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/samanatteu_test
+  jpa:
+    show-sql: false

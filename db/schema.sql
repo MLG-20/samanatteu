@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict YyQE2M5FdnjDu0oMk1agzibt7KYZyd7ANw1fLZK6FQHvn8Wcx7jatOuFw1WXIiP
+\restrict AvEZGs7IlAgCPM0l3Q6BgM1dMQwleZI55tizZpswKcEE1lBSMpDogsWw4NADehp
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -361,7 +361,8 @@ CREATE TABLE public.tontine (
     created_at timestamp without time zone,
     updated_at timestamp without time zone,
     statut character varying(20),
-    gestionnaire_id bigint
+    gestionnaire_id bigint,
+    intervalle integer DEFAULT 1 NOT NULL
 );
 
 
@@ -794,5 +795,5 @@ ALTER TABLE ONLY public.transaction
 -- PostgreSQL database dump complete
 --
 
-\unrestrict YyQE2M5FdnjDu0oMk1agzibt7KYZyd7ANw1fLZK6FQHvn8Wcx7jatOuFw1WXIiP
+\unrestrict AvEZGs7IlAgCPM0l3Q6BgM1dMQwleZI55tizZpswKcEE1lBSMpDogsWw4NADehp
 
