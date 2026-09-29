@@ -96,8 +96,11 @@ curl -X POST localhost:8080/auth/login -H 'Content-Type: application/json' \
 # Créer une tontine avec le token reçu
 curl -X POST localhost:8080/tontine -H "Authorization: Bearer <accessToken>" \
   -H 'Content-Type: application/json' \
-  -d '{"nom":"Tontine des amis","montantPart":10000,"frequence":"MENSUELLE","nbCycles":10,"jourCotisation":5}'
+  -d '{"nom":"Tontine des amis","montantPart":10000,"frequence":"MOIS","intervalle":1,"nbCycles":10,"jourCotisation":5}'
 ```
+
+`frequence` est une unité (`JOUR`, `SEMAINE`, `MOIS`) et `intervalle` un nombre d'unités :
+`"frequence":"MOIS","intervalle":2` = un cycle tous les 2 mois.
 
 ## API
 
@@ -126,6 +129,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `POST` | `/tontine/{id}/activer` | propriétaire | `EN_ATTENTE` ou `SUSPENDUE` → `ACTIVE` |
 | `POST` | `/tontine/{id}/suspendre` | propriétaire | `ACTIVE` → `SUSPENDUE` |
 | `POST` | `/tontine/{id}/cloturer` | propriétaire | `ACTIVE` → `TERMINEE` (état final) |
+| `POST` | `/tontine/{id}/cycles` | propriétaire | ouvre le cycle suivant (voir *Cycles et cotisations*) |
 
 Cycle de vie du statut :
 
@@ -155,9 +159,43 @@ décidés par le serveur ; un membre ou une tontine inexistants renvoient 404.
 
 `GET /tontine` est aussi ouvert aux `MEMBRE`, qui voient alors les tontines où ils participent.
 
+### Cycles et cotisations (implémenté, testé)
+
+Un **cycle** est une période de collecte ; à son ouverture, chaque membre actif doit une
+**cotisation** de `nombreParts × montantPart`.
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `POST` | `/tontine/{id}/cycles` | propriétaire | ouvre le cycle suivant, **sans corps** : tout est calculé par le serveur |
+| `POST` | `/cotisation/{id}/paiement` | propriétaire | enregistre un paiement (`{"montant":…,"modePaiement":"CASH\|WAVE\|ORANGE\|FREE","reference":…}`) |
+| `POST` | `/cycle/{id}/cloturer` | propriétaire | clôture le cycle ; les impayés passent `EN_RETARD` |
+| `GET` | `/cycle`, `/cotisation` | `GESTIONNAIRE`, `MEMBRE` | un gestionnaire voit ceux de **ses** tontines ; un membre les cycles de ses tontines et **ses propres** cotisations |
+| `DELETE` | `/cycle/{id}`, `/cotisation/{id}` | propriétaire | suppression |
+
+Règles :
+
+- **Ouverture** : la tontine doit être `ACTIVE` (409), aucun autre cycle `EN_COURS` (409), et pas
+  plus de `nbCycles` cycles (409). Le serveur fixe le numéro (dernier + 1), la date de début, la
+  fin prévue (début + `intervalle` × `frequence`), le statut `EN_COURS`, crée une cotisation
+  `EN_ATTENTE` par membre `ACTIF` et calcule le montant attendu (somme des montants dus).
+- **Paiement** : montant > 0 et mode obligatoires (400) ; pas plus que le reste dû (400) ; une
+  cotisation `COMPLET` est refusée (409). Statut obtenu : `COMPLET` si tout est payé, sinon
+  `PARTIEL` — sauf une cotisation `EN_RETARD`, qui le reste jusqu'au solde. Le montant collecté du
+  cycle augmente du paiement.
+- **Clôture** : seul un cycle `EN_COURS` se clôture (409) ; les cotisations non `COMPLET` passent
+  `EN_RETARD` et **restent payables** ; le cycle passe `CLOTURE` avec sa date de fin réelle.
+- Ouverture, paiement et clôture sont **atomiques** (`@Transactional`) : tout réussit ou rien.
+- Aucune route ne permet de créer ou modifier un cycle ou une cotisation à la main.
+
+```
+cotisation : EN_ATTENTE ──paiement──▶ PARTIEL ──paiement──▶ COMPLET
+                 │                       │                     ▲
+                 └──── clôture ──▶ EN_RETARD ──paiement (solde)─┘
+```
+
 ### Autres ressources (CRUD générique, sans règles métier pour l'instant)
 
-`/cycle`, `/cotisation`, `/tirage`, `/pret`, `/echeancePret`, `/transaction`, `/invitation`,
+`/tirage`, `/pret`, `/echeancePret`, `/transaction`, `/invitation`,
 `/importMembre`, `/notification`.
 
 Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
@@ -208,8 +246,9 @@ Choix notables :
   « a-t-il tel rôle ? » à `UtilisateurConnecte` (`telephone()`, `aLeRole(RoleUtilisateur)`), seul
   endroit, avec `JwtAuthFilter`, à toucher au `SecurityContextHolder`.
 - **Une règle sur une entité vit dans l'entité** : « cette tontine est-elle gérée par tel
-  utilisateur ? » est `Tontine.estGereePar(telephone)`, utilisée par les services de tontines et de
-  participations.
+  utilisateur ? » est `Tontine.estGereePar(telephone)`. Son usage (« sinon 403 ») est
+  `UtilisateurConnecte.verifierGestionnaire(tontine)`, partagé par les services de tontines,
+  participations, cycles et cotisations.
 
 ## Sécurité
 
@@ -231,18 +270,31 @@ Choix notables :
 ./mvnw test -Dtest='*ServiceTest,*ControllerSecurityTest,JwtAuthFilterTest'
 ```
 
-- `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest` : règles métier des
-  services avec des faux repositories (Mockito) — propriété, cycle de vie du statut, doublons,
-  valeurs décidées par le serveur, identité issue du token, lecture filtrée par rôle, champs
-  modifiables d'un profil.
-- `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest` : règles d'accès HTTP de
-  `SecurityConfig` (401 / 403 / 200 / 204 / 404) avec MockMvc, sans serveur ni base.
+- `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
+  `CotisationServiceTest` : règles métier des services avec des faux repositories (Mockito) —
+  propriété, cycle de vie du statut, doublons, valeurs décidées par le serveur, identité issue du
+  token, lecture filtrée par rôle, champs modifiables d'un profil, calcul des montants dus et
+  attendus, paiements partiels, retards à la clôture.
+- `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
+  `CycleControllerSecurityTest`, `CotisationControllerSecurityTest` : règles d'accès HTTP de
+  `SecurityConfig` (401 / 403 / 200 / 204 / 404) et validation des corps (400) avec MockMvc, sans
+  serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
   traversent pas ce filtre.
 
 > `SamanatteuApplicationTests` (chargement complet du contexte) nécessite PostgreSQL et les variables
 > d'environnement ; il n'est donc pas inclus dans la commande ci-dessus.
+
+**Base de test.** Les essais de l'API de bout en bout se font sur une base séparée,
+`samanatteu_test`, pour ne jamais toucher aux données réelles. Le profil Spring `test`
+(`application-test.yaml`) ne change que l'URL de la base :
+
+```bash
+sudo -u postgres createdb -O samanatteu_user samanatteu_test
+psql -h localhost -U samanatteu_user -d samanatteu_test -f db/schema.sql
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--server.port=8081 --spring.profiles.active=test"
+```
 
 ## Avancement
 
@@ -253,14 +305,17 @@ Le développement suit un planning en 8 phases.
 | 1 | Bases : projet, entités, base PostgreSQL | ✅ terminée |
 | 2 | Authentification et rôles | ✅ terminée, sauf « mot de passe oublié » (nécessite l'envoi de SMS, phase 6) |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
-| 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ⏳ à venir |
+| 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée ; reste le reçu PDF (avec l'historique des paiements) |
 | 5 | Tirage aléatoire pondéré, prêts et échéanciers | ⏳ à venir |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | ⏳ à venir |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- Les ressources autres que `/tontine` et `/participation` n'ont pas encore de règles métier ni de contrôle de propriété.
+- Les ressources autres que `/tontine`, `/participation`, `/cycle` et `/cotisation` n'ont pas encore de règles métier ni de contrôle de propriété.
+- Une cotisation ne garde que le mode, la référence et la date de son **dernier** paiement :
+  l'historique des paiements successifs (table `transaction`) et le reçu PDF par paiement restent à
+  faire.
 - Un membre sorti d'une tontine déjà lancée n'a pas encore d'action dédiée (statut `SORTI`) : retirer un participant n'est possible que tant que la tontine est `EN_ATTENTE`.
 - Le refresh token n'est pas révoqué après usage (pas de stockage côté serveur).
 - Les champs `createdAt` / `updatedAt` ne sont pas encore alimentés.
@@ -321,12 +376,49 @@ reste lisible.
 - **Deux `verifierProprietaire` identiques sont gardés volontairement.** La règle elle-même
   (`Tontine.estGereePar`) n'existe qu'à un endroit ; il ne reste dans les services que son usage
   (« sinon 403 »). Les fusionner rendrait `ParticipationService` dépendant de `TontineService` pour
-  trois lignes. On factorisera au troisième usage (règle de trois).
+  trois lignes. On factorisera au troisième usage (règle de trois). *Fait en phase 4* : les cycles
+  en avaient besoin, le contrôle est devenu `UtilisateurConnecte.verifierGestionnaire`.
 - **« Pas d'email » s'écrit toujours `null`, jamais `""`.** L'email est optionnel et unique en base :
   si des chaînes vides étaient stockées, deux comptes sans email entreraient en conflit. L'entrée est
   normalisée (vide ou blanc → `null`) avant toute vérification.
+- **Clôturer un cycle avec des impayés est permis (écart volontaire au cahier des charges).** Le CDC
+  se contredit : sa règle R4 interdit de clôturer tant qu'une cotisation n'est pas complète, mais il
+  prévoit aussi un marquage « en retard si le cycle est fermé sans paiement complet ». Appliquer R4
+  laisserait un seul retardataire bloquer une tontine de 300 membres. Choix retenu : la clôture
+  passe les impayés `EN_RETARD`, qui restent payables ; un paiement partiel n'efface pas le retard,
+  pour garder la trace utile aux rappels.
+- **Fréquence libre : une unité et un intervalle.** Le CDC ne prévoyait que trois valeurs
+  (hebdomadaire, mensuelle, trimestrielle) ; une tontine « tous les 15 jours » n'y entrait pas.
+  `frequence` devient une unité (`JOUR`, `SEMAINE`, `MOIS`) et `intervalle` un nombre (≥ 1). Un
+  simple nombre de jours a été écarté : 30 jours ne font pas un mois, les échéances auraient
+  dérivé (`plusMonths` gère les fins de mois).
+- **Cycles et cotisations naissent et changent uniquement par des actions métier.** Les `POST` et
+  `PUT` génériques de `/cycle` et `/cotisation` laissaient le client écrire numéro, montants et
+  statuts. Ils sont remplacés par `ouvrir`, `paiement` et `cloturer`, où le serveur calcule tout —
+  même principe que le statut des tontines. Chacune de ces actions écrit plusieurs lignes (un cycle
+  et N cotisations, ou une cotisation et son cycle) : elles sont `@Transactional`, pour qu'un échec
+  au milieu ne laisse pas un cycle `EN_COURS` à moitié créé qui bloquerait la tontine.
+- **Les montants sont des `BigDecimal` comparés avec `compareTo`.** `equals` tient compte du nombre
+  de décimales (`10000` ≠ `10000.00`) et aurait laissé une cotisation soldée en `PARTIEL`. Un test
+  couvre ce cas précis.
 
 ### Bugs trouvés et corrigés
+
+- **N'importe quel utilisateur connecté pouvait écrire les cycles et cotisations de toutes les
+  tontines.** `/cycle` et `/cotisation` n'avaient aucune règle dans `SecurityConfig` et aucun
+  contrôle de propriété : un `MEMBRE`, ou le gestionnaire d'une autre tontine, pouvait créer,
+  modifier ou supprimer des cycles et cotisations chez n'importe qui, et même déplacer une
+  cotisation vers une autre tontine (`setCycle` recopié depuis le JSON). Même faille qu'en phase 3
+  sur `/tontine`, restée ouverte sur les ressources encore « génériques ». Corrigé à deux niveaux
+  (rôle dans `SecurityConfig`, propriété dans le service), puis les routes génériques d'écriture ont
+  été supprimées.
+- **Deux erreurs attrapées en revue avant tout commit, désormais couvertes par des tests.** Pendant
+  la factorisation du contrôle de propriété, la vérification de `updateTontine` a été branchée sur
+  la tontine **envoyée par le client** au lieu de celle lue en base : un gestionnaire aurait pu
+  modifier la tontine d'un autre en écrivant son propre téléphone dans le JSON. Et le montant
+  attendu d'un cycle était calculé avec `total.add(total)` au lieu de `total.add(montantDu)` —
+  toujours 0, sans aucune erreur. Le second a été réintroduit volontairement pour vérifier que
+  `CycleServiceTest` le détecte.
 
 - **Un refresh token servait d'access token pendant 7 jours.** Le filtre JWT acceptait tout token
   correctement signé, sans lire son `type` : un refresh token (sans rôle, valable 7 jours) donnait
