@@ -21,10 +21,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.samanatteu.config.SecurityConfig;
+import com.samanatteu.dto.tontine.CycleDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.security.JwtAccessDeniedHandler;
 import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
+import com.samanatteu.service.tontine.CycleService;
 import com.samanatteu.service.tontine.TontineService;
 
 // Teste les RÈGLES D'ACCÈS de SecurityConfig sur /tontine (401, 403, 200), pas la logique du service.
@@ -47,6 +49,10 @@ class TontineControllerSecurityTest {
     // logique ici (elle a déjà ses tests unitaires). On ne fait que fixer ce qu'il répond.
     @MockitoBean
     private TontineService tontineService;
+
+    // TontineController reçoit aussi CycleService (route POST /tontine/{id}/cycles).
+    @MockitoBean
+    private CycleService cycleService;
 
     // JwtAuthFilter a besoin d'un JwtUtil pour se construire. On le remplace par un faux : dans ces tests
     // on n'envoie jamais de vrai token, l'utilisateur est simulé par @WithMockUser.
@@ -183,5 +189,36 @@ class TontineControllerSecurityTest {
 
         mockMvc.perform(post("/tontine/99/activer"))
                 .andExpect(status().isNotFound());
+    }
+
+    // --- Ouverture d'un cycle : POST /tontine/{id}/cycles (couverte par POST /tontine/**) ---
+
+    @Test
+    void ouvrirUnCycle_sansToken_donne401() throws Exception {
+        mockMvc.perform(post("/tontine/6/cycles"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "771234566", roles = "MEMBRE")
+    void ouvrirUnCycle_parUnMembre_donne403() throws Exception {
+        mockMvc.perform(post("/tontine/6/cycles"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000099", roles = "ADMIN")
+    void ouvrirUnCycle_parUnAdmin_donne403() throws Exception {
+        mockMvc.perform(post("/tontine/6/cycles"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void ouvrirUnCycle_parUnGestionnaire_donne200() throws Exception {
+        when(cycleService.ouvrirCycle(6L)).thenReturn(new CycleDTO());
+
+        mockMvc.perform(post("/tontine/6/cycles"))
+                .andExpect(status().isOk());
     }
 }
