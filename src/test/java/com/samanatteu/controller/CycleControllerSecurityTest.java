@@ -17,10 +17,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.samanatteu.config.SecurityConfig;
+import com.samanatteu.dto.cotisation.TirageDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
 import com.samanatteu.security.JwtAccessDeniedHandler;
 import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
+import com.samanatteu.service.cotisation.TirageService;
 import com.samanatteu.service.tontine.CycleService;
 
 // Règles d'ACCÈS de SecurityConfig sur /cycle : lecture GESTIONNAIRE ou MEMBRE (pas ADMIN),
@@ -35,6 +37,11 @@ class CycleControllerSecurityTest {
 
     @MockitoBean
     private CycleService cycleService;
+
+    // CycleController porte aussi POST /cycle/{id}/tirage : sans ce faux
+    // TirageService, le contexte @WebMvcTest ne démarre pas.
+    @MockitoBean
+    private TirageService tirageService;
 
     @MockitoBean
     private JwtUtil jwtUtil;
@@ -101,6 +108,39 @@ class CycleControllerSecurityTest {
         when(cycleService.cloturerCycle(5L)).thenReturn(new CycleDTO());
 
         mockMvc.perform(post("/cycle/5/cloturer"))
+                .andExpect(status().isOk());
+    }
+
+    // ----------------------------------------------------------------- tirage
+    // Couvert par la règle POST /cycle/** → GESTIONNAIRE (aucune règle dédiée).
+
+    @Test
+    void tirageDUnCycle_sansToken_donne401() throws Exception {
+        mockMvc.perform(post("/cycle/5/tirage"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // Un membre ne peut pas se lancer un tirage (ni se désigner gagnant).
+    @Test
+    @WithMockUser(username = "771234566", roles = "MEMBRE")
+    void tirageDUnCycle_parUnMembre_donne403() throws Exception {
+        mockMvc.perform(post("/cycle/5/tirage"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000099", roles = "ADMIN")
+    void tirageDUnCycle_parUnAdmin_donne403() throws Exception {
+        mockMvc.perform(post("/cycle/5/tirage"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void tirageDUnCycle_parUnGestionnaire_donne200() throws Exception {
+        when(tirageService.tirerAuSort(5L)).thenReturn(new TirageDTO());
+
+        mockMvc.perform(post("/cycle/5/tirage"))
                 .andExpect(status().isOk());
     }
 

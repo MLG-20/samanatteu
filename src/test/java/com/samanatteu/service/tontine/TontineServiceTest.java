@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,10 +27,12 @@ import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.Participation;
 import com.samanatteu.entity.Tontine;
 import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.enums.StatutParticipation;
 import com.samanatteu.enums.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
-import com.samanatteu.exception.TontineNonModifiableException;
-import com.samanatteu.exception.TransitionStatutInvalideException;
+import com.samanatteu.exception.tontine.TontineNonModifiableException;
+import com.samanatteu.exception.tontine.TontineSansMembreException;
+import com.samanatteu.exception.tontine.TransitionStatutInvalideException;
 import com.samanatteu.repository.ParticipationRepository;
 import com.samanatteu.repository.TontineRepository;
 import com.samanatteu.repository.UtilisateurRepository;
@@ -279,27 +282,92 @@ class TontineServiceTest {
         assertEquals(18L, resultat.getGestionnaireId());
     }
 
-    @Test
-    void activerTontine_passeDeEnAttenteAActive() {
-        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
-        connecterCommeGestionnaire("770000101");
-        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-        TontineDTO resultat = tontineService.activerTontine(6L).get();
-
-        assertEquals(StatutTontine.ACTIVE, resultat.getStatut());
+    // Membre ACTIF avec n parts (pour le calcul de nbCycles à l'activation).
+    private Participation membreActif(int parts) {
+        Participation p = new Participation();
+        p.setNombreParts(parts);
+        p.setStatut(StatutParticipation.ACTIF);
+        return p;
     }
 
-    // La reprise : une tontine suspendue peut être réactivée.
+    // 1re activation : nbCycles = somme des parts des membres ACTIF (modèle B :
+    // une part = un gain = un cycle). Awa 2 + Binta 1 + Coumba 1 = 4 cycles.
     @Test
-    void activerTontine_reprendUneTontineSuspendue() {
-        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.SUSPENDUE)));
+    void activerTontine_passeDeEnAttenteAActive_etCalculeNbCycles() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
+        connecterCommeGestionnaire("770000101");
+        when(participationRepository.findByTontineIdAndStatut(any(), eq(StatutParticipation.ACTIF)))
+                .thenReturn(List.of(membreActif(2), membreActif(1), membreActif(1)));
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TontineDTO resultat = tontineService.activerTontine(6L).get();
+
+        assertEquals(StatutTontine.ACTIVE, resultat.getStatut());
+        assertEquals(4, resultat.getNbCycles());
+    }
+
+    // Aucun membre : nbCycles vaudrait 0 → refus dès l'activation (409), rien enregistré.
+    @Test
+    void activerTontine_sansMembre_refuse() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
+        connecterCommeGestionnaire("770000101");
+        when(participationRepository.findByTontineIdAndStatut(any(), eq(StatutParticipation.ACTIF)))
+                .thenReturn(List.of());
+
+        assertThrows(TontineSansMembreException.class, () -> tontineService.activerTontine(6L));
+        verify(tontineRepository, never()).save(any());
+    }
+
+    // La reprise : une tontine suspendue peut être réactivée, SANS recalculer
+    // nbCycles (des cycles ont déjà eu lieu, la durée est fixée au lancement).
+    @Test
+    void activerTontine_reprendUneTontineSuspendue_sansRecalculerNbCycles() {
+        Tontine suspendue = tontineEnBase(StatutTontine.SUSPENDUE);
+        suspendue.setNbCycles(4);
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(suspendue));
         connecterCommeGestionnaire("770000101");
         when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         TontineDTO resultat = tontineService.activerTontine(6L).get();
 
         assertEquals(StatutTontine.ACTIVE, resultat.getStatut());
+        assertEquals(4, resultat.getNbCycles());
+        verify(participationRepository, never()).findByTontineIdAndStatut(any(), any());
+    }
+
+    // Le client envoie "nbCycles: 12" : le serveur l'ignore et met 0 (« pas encore calculé »).
+    @Test
+    void createTontine_forceNbCyclesAZero() {
+        Utilisateur a = new Utilisateur();
+        a.setId(18L);
+        a.setTelephone("770000101");
+        when(utilisateurRepository.findByTelephone("770000101")).thenReturn(Optional.of(a));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Tontine demande = new Tontine();
+        demande.setNbCycles(12);
+
+        TontineDTO resultat = tontineService.createTontine(demande);
+
+        assertEquals(0, resultat.getNbCycles());
+    }
+
+    // Le PUT ne peut plus changer nbCycles : c'est le serveur qui le fixe.
+    @Test
+    void updateTontine_neChangePasNbCycles() {
+        Tontine enBase = tontineEnBase(StatutTontine.EN_ATTENTE);
+        enBase.setNbCycles(0);
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(enBase));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Tontine nouvellesValeurs = new Tontine();
+        nouvellesValeurs.setNbCycles(12);
+
+        TontineDTO resultat = tontineService.updateTontine(6L, nouvellesValeurs).get();
+
+        assertEquals(0, resultat.getNbCycles());
     }
 
     // TERMINEE est un état final : on ne ressuscite pas une tontine terminée.

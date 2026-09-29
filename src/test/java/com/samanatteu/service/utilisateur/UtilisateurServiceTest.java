@@ -33,7 +33,7 @@ import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.Utilisateur;
 import com.samanatteu.enums.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
-import com.samanatteu.exception.EmailDejaUtiliseException;
+import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
 import com.samanatteu.repository.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
