@@ -4,9 +4,10 @@ API REST de gestion de **tontines** (épargne rotative entre membres d'un groupe
 Spring Boot. Un gestionnaire crée une tontine, y inscrit des membres, et l'application suit les
 cycles, les cotisations, les tirages et les prêts.
 
-> **État du projet : en développement actif.** L'authentification et la gestion des tontines sont
-> fonctionnelles et testées ; le reste du domaine (cotisations, tirages, prêts, notifications…) existe
-> pour l'instant sous forme de CRUD générique. Voir [Avancement](#avancement).
+> **État du projet : en développement actif.** Authentification, tontines, participations,
+> cycles et cotisations, tirages, caisse de prêts et prêts sont fonctionnels et testés ;
+> notifications, invitations, import et tableaux de bord restent à faire. Voir
+> [Avancement](#avancement).
 
 ## Sommaire
 
@@ -96,11 +97,12 @@ curl -X POST localhost:8080/auth/login -H 'Content-Type: application/json' \
 # Créer une tontine avec le token reçu
 curl -X POST localhost:8080/tontine -H "Authorization: Bearer <accessToken>" \
   -H 'Content-Type: application/json' \
-  -d '{"nom":"Tontine des amis","montantPart":10000,"frequence":"MOIS","intervalle":1,"nbCycles":10,"jourCotisation":5}'
+  -d '{"nom":"Tontine des amis","montantPart":10000,"montantCaissePret":500,"frequence":"MOIS","intervalle":1,"jourCotisation":5}'
 ```
 
 `frequence` est une unité (`JOUR`, `SEMAINE`, `MOIS`) et `intervalle` un nombre d'unités :
-`"frequence":"MOIS","intervalle":2` = un cycle tous les 2 mois.
+`"frequence":"MOIS","intervalle":2` = un cycle tous les 2 mois. `montantCaissePret` est la somme
+fixe que chaque membre verse à la caisse de prêts à chaque cycle (`0` = pas de caisse).
 
 ## API
 
@@ -130,6 +132,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `POST` | `/tontine/{id}/suspendre` | propriétaire | `ACTIVE` → `SUSPENDUE` |
 | `POST` | `/tontine/{id}/cloturer` | propriétaire | `ACTIVE` → `TERMINEE` (état final) |
 | `POST` | `/tontine/{id}/cycles` | propriétaire | ouvre le cycle suivant (voir *Cycles et cotisations*) |
+| `POST` | `/tontine/{id}/prets` | propriétaire | accorde un prêt sur la caisse de prêts (voir *Caisse de prêts et prêts*) |
 
 Cycle de vie du statut :
 
@@ -167,7 +170,8 @@ décidés par le serveur ; un membre ou une tontine inexistants renvoient 404.
 ### Cycles et cotisations (implémenté, testé)
 
 Un **cycle** est une période de collecte ; à son ouverture, chaque membre actif doit une
-**cotisation** de `nombreParts × montantPart`.
+**cotisation** de `nombreParts × montantPart`, plus le montant fixe de la caisse de prêts
+(`montantCaissePret`, le même pour tous, quel que soit le nombre de parts).
 
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
@@ -183,10 +187,12 @@ Règles :
   plus de `nbCycles` cycles (409). Le serveur fixe le numéro (dernier + 1), la date de début, la
   fin prévue (début + `intervalle` × `frequence`), le statut `EN_COURS`, crée une cotisation
   `EN_ATTENTE` par membre `ACTIF` et calcule le montant attendu (somme des montants dus).
-- **Paiement** : montant > 0 et mode obligatoires (400) ; pas plus que le reste dû (400) ; une
-  cotisation `COMPLET` est refusée (409). Statut obtenu : `COMPLET` si tout est payé, sinon
-  `PARTIEL` — sauf une cotisation `EN_RETARD`, qui le reste jusqu'au solde. Le montant collecté du
-  cycle augmente du paiement.
+- **Paiement** : montant > 0 et mode obligatoires (400) ; pas plus que le reste dû, part et caisse
+  comprises (400) ; une cotisation `COMPLET` est refusée (409). Un seul paiement est **réparti par
+  le serveur, la part d'abord** : le surplus va à la caisse de prêts. Statut obtenu : `COMPLET`
+  quand la part **et** la caisse sont payées, sinon `PARTIEL` — sauf une cotisation `EN_RETARD`,
+  qui le reste jusqu'au solde. Le montant collecté du cycle (la cagnotte du tirage) n'augmente que
+  de la part ; la caisse va dans `soldeCaissePret` de la tontine.
 - **Clôture** : seul un cycle `EN_COURS` se clôture (409) ; les cotisations non `COMPLET` passent
   `EN_RETARD` et **restent payables** ; le cycle passe `CLOTURE` avec sa date de fin réelle.
 - Ouverture, paiement et clôture sont **atomiques** (`@Transactional`) : tout réussit ou rien.
@@ -219,8 +225,9 @@ Règles :
   vient de `SecureRandom` (imprévisible).
 - **Montants** : le gagnant a droit à la cagnotte attendue du cycle ; il reçoit tout de suite ce
   qui est en caisse. Statut `VERSE` si tout est remis, `PARTIEL` sinon, `EN_ATTENTE` si rien.
-- **Compensation** : si le gagnant est lui-même `EN_RETARD` sur ce cycle, sa dette est payée par
-  son gain (cotisation `COMPLET`, caisse complétée).
+- **Compensation** : si le gagnant est lui-même `EN_RETARD` sur ce cycle, sa dette **de part** est
+  payée par son gain (cagnotte complétée). La caisse de prêts n'est jamais compensée : s'il la doit
+  encore, la cotisation reste `EN_RETARD` jusqu'à ce qu'il la paie.
 - **Versement** : on ne remet pas plus que l'argent en caisse pas encore remis (400). Le gestionnaire
   l'enregistre quand la remise a **réellement** lieu.
 - **Report** : seulement `EN_ATTENTE` ou `PARTIEL` (409) ; un versement fait sortir de `REPORTE`.
@@ -234,10 +241,48 @@ tirage : EN_ATTENTE ──verser──▶ PARTIEL ──verser (solde)──▶ 
                                └──────────verser─────────────┘
 ```
 
+### Caisse de prêts et prêts (implémenté, testé)
+
+Chaque tontine peut avoir une **caisse de prêts**, séparée de la cagnotte des tirages : elle est
+alimentée par le montant fixe versé à chaque cycle (`montantCaissePret`), puis par les
+remboursements, intérêts compris. La gestionnaire y prête de l'argent aux membres.
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `POST` | `/tontine/{id}/prets` | propriétaire | accorde un prêt (`{"membreId":…,"montant":…,"nbEcheances":…,"dateDebutRemboursement":"AAAA-MM-JJ","tauxInteret":…}` ou `"montantInteret":…` à la place du taux) |
+| `POST` | `/pret/{id}/remboursement` | propriétaire | enregistre un remboursement (`{"montant":…}`) |
+| `GET` | `/pret`, `/echeancePret` | `GESTIONNAIRE`, `MEMBRE` | un gestionnaire voit ceux de **ses** tontines ; un membre **uniquement les siens** |
+
+Règles :
+
+- **Accorder** : tontine `ACTIVE` (409) ; le membre doit participer à cette tontine avec le statut
+  `ACTIF` (400) ; un seul prêt en cours (`ACTIF` ou `EN_RETARD`) par membre et par tontine (409) ;
+  pas plus que le solde de la caisse (409). Le serveur débite la caisse et génère l'échéancier.
+- **Intérêt** : fixé par la gestionnaire, au choix **en pourcentage** (`tauxInteret`) ou **en
+  francs** (`montantInteret`), pas les deux (400), ou aucun (prêt sans intérêt). Un taux est
+  converti une seule fois : `montant × taux / 100`, arrondi au franc.
+- **Échéancier** : `(montant + intérêt) / nbEcheances`, arrondi au franc inférieur, la dernière
+  échéance absorbant le reste pour que le total soit exact (110 000 en 3 : 36 666, 36 666,
+  36 668). La 1re échéance tombe à `dateDebutRemboursement`, les suivantes au rythme de la tontine
+  (`frequence` × `intervalle`), toujours calculées depuis la date de début (pas de dérive en fin
+  de mois).
+- **Rembourser** : pas plus que le reste dû (400) ; un prêt `REMBOURSE` est refusé (409). Le
+  montant est réparti sur les échéances **les plus anciennes d'abord** (on peut payer plusieurs
+  échéances, ou en avance) et retourne entièrement dans la caisse. Tout payé : `REMBOURSE`.
+- **Retards** : une tâche planifiée (`@Scheduled`, chaque nuit à minuit) passe `EN_RETARD` les
+  échéances dépassées non payées, et leur prêt avec. Quand le membre a rattrapé toutes ses
+  échéances en retard, le prêt redevient `ACTIF`.
+- Aucune route ne permet de créer, modifier ou supprimer un prêt ou une échéance à la main.
+
+```
+prêt : ACTIF ──échéance dépassée (minuit)──▶ EN_RETARD
+         │  ◀──retards rattrapés──────────────────┘
+         └──tout remboursé──▶ REMBOURSE   (état final, aussi depuis EN_RETARD)
+```
+
 ### Autres ressources (CRUD générique, sans règles métier pour l'instant)
 
-`/pret`, `/echeancePret`, `/transaction`, `/invitation`,
-`/importMembre`, `/notification`.
+`/transaction`, `/invitation`, `/importMembre`, `/notification`.
 
 Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
 
@@ -270,10 +315,14 @@ src/main/java/com/samanatteu/
 ├── controller/    un contrôleur REST par ressource
 ├── service/       logique métier, regroupée par domaine
 │   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
-├── repository/    interfaces Spring Data JPA
-├── entity/        entités JPA (12 tables)
+├── repository/    interfaces Spring Data JPA, regroupées par domaine
+│   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
+├── entity/        entités JPA (12 tables), regroupées par domaine
+│   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── dto/           objets d'échange avec le client (jamais l'entité brute : pas de fuite de mot de passe)
-├── enums/         statuts et rôles
+│   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
+├── enums/         statuts et rôles, regroupés par domaine
+│   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── exception/     exceptions métier (héritent de SamanatteuException, avec leur code HTTP),
 │   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 └── handler/       GlobalExceptionHandler : transforme les exceptions en réponses JSON
@@ -281,6 +330,10 @@ src/main/java/com/samanatteu/
 
 Choix notables :
 
+- **Un même découpage par domaine partout** : `service/`, `dto/`, `entity/`, `repository/`, `enums/`
+  et `exception/` ont les mêmes sous-dossiers (`tontine/` regroupe tontines, participations et
+  cycles ; `cotisation/` les cotisations et tirages ; `pret/` les prêts, échéances et
+  transactions). Tout ce qui concerne un domaine se trouve au même endroit dans chaque couche.
 - **Les entités ne sortent jamais de l'API** : chaque réponse passe par un DTO.
 - **Une exception métier = un code HTTP**, portée par la classe elle-même ; le
   `GlobalExceptionHandler` n'a pas à être modifié pour en ajouter une.
@@ -314,15 +367,18 @@ Choix notables :
 ```
 
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
-  `CotisationServiceTest`, `TirageServiceTest` : règles métier des services avec des faux
-  repositories (Mockito) — propriété, cycle de vie du statut, doublons, valeurs décidées par le
-  serveur, identité issue du token, lecture filtrée par rôle, champs modifiables d'un profil, calcul
-  des montants dus et attendus, paiements partiels, retards à la clôture, composition de l'urne,
-  compensation, versements et reports. Le hasard du tirage est remplacé par un faux `Random` qui
+  `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest` :
+  règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
+  statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
+  rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
+  répartition part / caisse, retards à la clôture, composition de l'urne, compensation, versements
+  et reports, intérêts, échéanciers (arrondis, dates de fin de mois), remboursements et retards de
+  prêts. Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
-  `TirageControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `TirageControllerSecurityTest`, `PretControllerSecurityTest`,
+  `EcheancePretControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -351,13 +407,20 @@ Le développement suit un planning en 8 phases.
 | 2 | Authentification et rôles | ✅ terminée, sauf « mot de passe oublié » (nécessite l'envoi de SMS, phase 6) |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée ; reste le reçu PDF (avec l'historique des paiements) |
-| 5 | Tirage au sort, prêts et échéanciers | 🚧 tirage terminé (urne, compensation, versements, reports, `nbCycles` calculé) ; prêts et échéanciers à venir |
+| 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | ⏳ à venir |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- Les ressources autres que `/tontine`, `/participation`, `/cycle`, `/cotisation` et `/tirage` n'ont pas encore de règles métier ni de contrôle de propriété.
+- `/transaction`, `/invitation`, `/importMembre` et `/notification` n'ont pas encore de règles
+  métier ni de contrôle de propriété.
+- Une échéance de prêt ne garde que la date de son **dernier** paiement : l'historique des
+  remboursements relèvera aussi de la table `transaction`.
+- Ce que devient la caisse de prêts à la fin d'une tontine (partage entre membres ?) n'est pas
+  encore décidé ; un prêt ne peut pas être annulé (statut `ANNULE` du CDC non retenu pour l'instant).
+- Les relations JPA sont chargées en `EAGER` (défaut de `@ManyToOne`) sans `JOIN FETCH` : les listes
+  font des requêtes N+1. Négligeable à l'échelle d'une tontine, à optimiser dans une étape dédiée.
 - Un tirage ne garde que la date de son **dernier** versement ; l'historique des remises au
   gagnant relèvera, comme les paiements, de la table `transaction`.
 - Un corps JSON mal formé n'a pas encore de traitement dédié dans `GlobalExceptionHandler`
@@ -481,7 +544,53 @@ reste lisible.
   trace. Le statut `REPORTE` ne met en pause que le **versement** (arrangement entre membres) ; une
   option « annuler et retirer » a été écartée pour la même raison.
 
+- **La caisse de prêts est séparée de la cagnotte des tirages.** Le CDC ne dit pas d'où vient
+  l'argent prêté. Pratique retenue : une petite somme fixe par membre et par cycle (même montant
+  pour tous, sans lien avec les parts), versée dans une caisse propre à la tontine. Jamais mélangée
+  à `montantCollecte`, sinon le gagnant du tirage repartirait avec l'argent des prêts.
+- **Un seul paiement, la part d'abord.** En pratique, le membre donne tout ensemble. Le serveur
+  répartit : la part se remplit d'abord, le surplus va à la caisse. Payer la part le matin et la
+  caisse le soir fonctionne sans option, puisqu'une part remplie laisse tout le reste à la caisse.
+  Une cotisation n'est `COMPLET` qu'avec les deux, sinon les 500 F de caisse ne pourraient plus être
+  versés (paiement sur `COMPLET` refusé).
+- **L'application ne fixe pas l'intérêt.** C'est un accord entre la gestionnaire et le membre.
+  Deux saisies sont proposées, pour être utilisable par tous : en pourcentage ou directement en
+  francs (écart au CDC, qui ne prévoyait qu'un taux). Un taux est converti une fois en intérêt
+  simple, arrondi au franc : aucune méthode bancaire cachée dans le calcul.
+- **Le franc CFA n'a pas de centimes.** Les échéances sont arrondies au franc inférieur et la
+  dernière absorbe le reste : le membre rembourse exactement le total, ni 1 F de plus ni de moins.
+- **Les échéances suivent le rythme de la tontine.** Le membre rembourse quand il cotise, au même
+  rendez-vous. La gestionnaire ne choisit que la date de la première échéance ; une date passée est
+  permise pour saisir un prêt déjà en cours avant d'adopter l'application.
+- **Un seul prêt en cours par membre, dans chaque tontine.** Un membre en retard qui réemprunte,
+  c'est ce qui fait perdre l'argent du groupe. Vérifié par tontine et non globalement : chaque
+  tontine a sa caisse, et regarder les prêts d'une autre ferait fuiter des informations entre
+  gestionnaires.
+- **Un membre ne voit que ses propres prêts.** Contrairement aux tirages, publics dans le groupe
+  (transparence), une dette est une information privée.
+- **Un remboursement porte sur le prêt, pas sur une échéance.** Le membre apporte « ce qu'il a » ;
+  le serveur remplit les échéances les plus anciennes d'abord. Rembourser en avance ou plusieurs
+  échéances d'un coup fonctionne naturellement.
+- **Les retards sont détectés chaque nuit par une tâche planifiée.** Une action manuelle « vérifier
+  les retards » dépendait de la mémoire de la gestionnaire. `@Scheduled` lance la vérification à
+  minuit, sans utilisateur connecté (donc sans contrôle de propriété, et jamais exposée par une
+  route). Le même mécanisme servira aux rappels J-3 de la phase notifications.
+
 ### Bugs trouvés et corrigés
+
+- **N'importe quel utilisateur connecté pouvait s'accorder un prêt ou effacer une dette.** `/pret`
+  et `/echeancePret` n'avaient aucune règle dans `SecurityConfig` et exposaient un CRUD générique :
+  un `MEMBRE` pouvait créer un prêt sans passer par la caisse, se marquer « payé » par un `PUT`
+  sur une échéance, ou supprimer son prêt. Même faille que sur `/cycle` et `/tirage`. Routes
+  d'écriture supprimées, remplacées par `accorder` et `rembourser`, et règles ajoutées.
+- **Quatre erreurs attrapées en revue avant tout commit, désormais couvertes par des tests.** Le
+  contrôle du solde comparait le prêt à `montantCaissePret` (les 500 F par cycle, la règle) au
+  lieu de `soldeCaissePret` (l'argent disponible, l'état) ; le débit de la caisse réécrivait le
+  solde à sa propre valeur (`subtract` oublié), ce qui aurait permis de prêter dix fois le même
+  argent ; la boucle de l'échéancier s'arrêtait à `i < nb` (la dernière échéance n'était jamais
+  créée, et aucune pour un prêt en une fois) ; et le solde de la caisse était recopié depuis le
+  JSON du `PUT /tontine`. Chacune a été réintroduite volontairement pour vérifier qu'un test la
+  détecte.
 
 - **Toute erreur du client devenait une « erreur inattendue » 500.** Le filet
   `@ExceptionHandler(Exception.class)` de `GlobalExceptionHandler` attrapait aussi les exceptions
