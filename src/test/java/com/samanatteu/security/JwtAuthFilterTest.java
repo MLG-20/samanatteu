@@ -14,8 +14,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.RoleUtilisateur;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 
 // Teste le filtre avec de VRAIS tokens signés par un vrai JwtUtil (sans Spring, sans base).
 // Les tests MockMvc des contrôleurs simulent l'utilisateur avec @WithMockUser et ne traversent

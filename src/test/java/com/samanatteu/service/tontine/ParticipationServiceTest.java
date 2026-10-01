@@ -28,21 +28,21 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.samanatteu.dto.tontine.ParticipationDTO;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.StatutParticipation;
-import com.samanatteu.enums.StatutTontine;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.tontine.StatutParticipation;
+import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.tontine.InscriptionsFermeesException;
-import com.samanatteu.exception.utilisateur.MembreIntrouvableException;
 import com.samanatteu.exception.tontine.NombrePartsInvalideException;
 import com.samanatteu.exception.tontine.ParticipationDejaExistanteException;
 import com.samanatteu.exception.tontine.RelationObligatoireException;
 import com.samanatteu.exception.tontine.TontineIntrouvableException;
-import com.samanatteu.repository.ParticipationRepository;
-import com.samanatteu.repository.TontineRepository;
-import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.exception.utilisateur.MembreIntrouvableException;
+import com.samanatteu.repository.tontine.ParticipationRepository;
+import com.samanatteu.repository.tontine.TontineRepository;
+import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 // Tests des règles de ParticipationService, avec de faux repositories (Mockito) : ni base ni serveur.

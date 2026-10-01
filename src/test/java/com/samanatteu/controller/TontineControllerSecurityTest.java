@@ -1,5 +1,9 @@
 package com.samanatteu.controller;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -21,11 +25,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.samanatteu.config.SecurityConfig;
+import com.samanatteu.dto.pret.PretDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.security.JwtAccessDeniedHandler;
 import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
+import com.samanatteu.service.pret.PretService;
 import com.samanatteu.service.tontine.CycleService;
 import com.samanatteu.service.tontine.TontineService;
 
@@ -53,6 +59,9 @@ class TontineControllerSecurityTest {
     // TontineController reçoit aussi CycleService (route POST /tontine/{id}/cycles).
     @MockitoBean
     private CycleService cycleService;
+
+    @MockitoBean
+    private PretService pretService;
 
     // JwtAuthFilter a besoin d'un JwtUtil pour se construire. On le remplace par un faux : dans ces tests
     // on n'envoie jamais de vrai token, l'utilisateur est simulé par @WithMockUser.
@@ -220,5 +229,67 @@ class TontineControllerSecurityTest {
 
         mockMvc.perform(post("/tontine/6/cycles"))
                 .andExpect(status().isOk());
+    }
+
+    // ------------------------------------------- accorder un prêt (/prets)
+
+    private static final String DEMANDE_PRET = """
+            {"membreId": 3, "montant": 50000, "nbEcheances": 5,
+             "dateDebutRemboursement": "2026-11-01", "tauxInteret": 10}""";
+
+    @Test
+    @WithMockUser(username = "771234566", roles = "MEMBRE")
+    void accorderUnPret_parUnMembre_donne403() throws Exception {
+        mockMvc.perform(post("/tontine/6/prets")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(DEMANDE_PRET))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000099", roles = "ADMIN")
+    void accorderUnPret_parUnAdmin_donne403() throws Exception {
+        mockMvc.perform(post("/tontine/6/prets")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(DEMANDE_PRET))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void accorderUnPret_parUnGestionnaire_donne200() throws Exception {
+        when(pretService.accorderPret(eq(6L), any())).thenReturn(new PretDTO());
+
+        mockMvc.perform(post("/tontine/6/prets")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(DEMANDE_PRET))
+                .andExpect(status().isOk());
+    }
+
+    // @AssertTrue : taux ET montant d'intérêt ensemble → 400 avant le service.
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void accorderUnPret_tauxEtMontantDInteret_donne400SansAppelerLeService() throws Exception {
+        mockMvc.perform(post("/tontine/6/prets")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"membreId": 3, "montant": 50000, "nbEcheances": 5,
+                         "dateDebutRemboursement": "2026-11-01",
+                         "tauxInteret": 10, "montantInteret": 5000}"""))
+                .andExpect(status().isBadRequest());
+
+        verify(pretService, never()).accorderPret(any(), any());
+    }
+
+    // @NotNull sur la date du premier remboursement.
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void accorderUnPret_sansDateDeDebut_donne400() throws Exception {
+        mockMvc.perform(post("/tontine/6/prets")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"membreId\": 3, \"montant\": 50000, \"nbEcheances\": 5}"))
+                .andExpect(status().isBadRequest());
+
+        verify(pretService, never()).accorderPret(any(), any());
     }
 }

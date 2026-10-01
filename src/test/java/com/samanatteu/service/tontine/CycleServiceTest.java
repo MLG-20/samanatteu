@@ -29,16 +29,16 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.samanatteu.dto.tontine.CycleDTO;
-import com.samanatteu.entity.Cotisation;
-import com.samanatteu.entity.Cycle;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.FrequenceTontine;
-import com.samanatteu.enums.StatutCotisation;
-import com.samanatteu.enums.StatutCycle;
-import com.samanatteu.enums.StatutParticipation;
-import com.samanatteu.enums.StatutTontine;
+import com.samanatteu.entity.cotisation.Cotisation;
+import com.samanatteu.entity.tontine.Cycle;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.tontine.FrequenceTontine;
+import com.samanatteu.enums.tontine.StatutCycle;
+import com.samanatteu.enums.tontine.StatutParticipation;
+import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.tontine.CycleDejaEnCoursException;
 import com.samanatteu.exception.tontine.CycleIntrouvableException;
@@ -46,10 +46,10 @@ import com.samanatteu.exception.tontine.CycleNonEnCoursException;
 import com.samanatteu.exception.tontine.NombreCyclesAtteintException;
 import com.samanatteu.exception.tontine.TontineIntrouvableException;
 import com.samanatteu.exception.tontine.TontineNonActiveException;
-import com.samanatteu.repository.CotisationRepository;
-import com.samanatteu.repository.CycleRepository;
-import com.samanatteu.repository.ParticipationRepository;
-import com.samanatteu.repository.TontineRepository;
+import com.samanatteu.repository.cotisation.CotisationRepository;
+import com.samanatteu.repository.tontine.CycleRepository;
+import com.samanatteu.repository.tontine.ParticipationRepository;
+import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 // Tests des règles de CycleService (ouverture, clôture, lecture filtrée), avec de faux repositories.
@@ -218,6 +218,29 @@ class CycleServiceTest {
             assertEquals(StatutCotisation.EN_ATTENTE, c.getStatut());
             assertEquals(0, BigDecimal.ZERO.compareTo(c.getMontantPaye()));
             assertEquals(41L, c.getCycle().getId());
+        }
+    }
+
+    // Caisse de prêts 500 : montant FIXE par membre (pas × parts), rien de
+    // versé, et jamais ajouté à montantAttendu (cagnotte du tirage).
+    @Test
+    void ouvrir_caisseDePrets_montantFixeParMembreHorsCagnotte() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Tontine tontine = tontine(StatutTontine.ACTIVE);
+        tontine.setMontantCaissePret(new BigDecimal("500"));
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine));
+        when(participationRepository.findByTontineIdAndStatut(6L, StatutParticipation.ACTIF))
+                .thenReturn(List.of(participation(tontine, 1), participation(tontine, 2)));
+        saveDuCycleRenvoieLeCycle();
+
+        CycleDTO resultat = cycleService.ouvrirCycle(6L);
+
+        assertEquals(0, new BigDecimal("15000").compareTo(resultat.getMontantAttendu()));
+        ArgumentCaptor<Cotisation> captees = ArgumentCaptor.forClass(Cotisation.class);
+        verify(cotisationRepository, times(2)).save(captees.capture());
+        for (Cotisation c : captees.getAllValues()) {
+            assertEquals(0, new BigDecimal("500").compareTo(c.getMontantCaisseDu()));
+            assertEquals(0, BigDecimal.ZERO.compareTo(c.getMontantCaissePaye()));
         }
     }
 

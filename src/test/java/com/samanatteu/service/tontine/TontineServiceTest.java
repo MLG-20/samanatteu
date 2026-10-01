@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,18 +25,18 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.samanatteu.dto.tontine.TontineDTO;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.StatutParticipation;
-import com.samanatteu.enums.StatutTontine;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.tontine.StatutParticipation;
+import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.tontine.TontineNonModifiableException;
 import com.samanatteu.exception.tontine.TontineSansMembreException;
 import com.samanatteu.exception.tontine.TransitionStatutInvalideException;
-import com.samanatteu.repository.ParticipationRepository;
-import com.samanatteu.repository.TontineRepository;
-import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.repository.tontine.ParticipationRepository;
+import com.samanatteu.repository.tontine.TontineRepository;
+import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 @ExtendWith(MockitoExtension.class)
@@ -368,6 +369,46 @@ class TontineServiceTest {
         TontineDTO resultat = tontineService.updateTontine(6L, nouvellesValeurs).get();
 
         assertEquals(0, resultat.getNbCycles());
+    }
+
+    // Caisse de prêts : le client envoie un solde de 1 000 000 à la création,
+    // le serveur l'ignore et part de 0 (sinon on prêterait de l'argent fictif).
+    @Test
+    void createTontine_forceLeSoldeDeLaCaisseAZero() {
+        Utilisateur a = new Utilisateur();
+        a.setId(18L);
+        a.setTelephone("770000101");
+        when(utilisateurRepository.findByTelephone("770000101")).thenReturn(Optional.of(a));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Tontine demande = new Tontine();
+        demande.setMontantCaissePret(new BigDecimal("500"));
+        demande.setSoldeCaissePret(new BigDecimal("1000000"));
+
+        TontineDTO resultat = tontineService.createTontine(demande);
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(resultat.getSoldeCaissePret()));
+        assertEquals(0, new BigDecimal("500").compareTo(resultat.getMontantCaissePret()));
+    }
+
+    // PUT : la règle (montantCaissePret) change, l'état (soldeCaissePret) jamais.
+    @Test
+    void updateTontine_changeLeMontantDeCaisseMaisPasLeSolde() {
+        Tontine enBase = tontineEnBase(StatutTontine.EN_ATTENTE);
+        enBase.setSoldeCaissePret(BigDecimal.ZERO);
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(enBase));
+        connecterCommeGestionnaire("770000101");
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Tontine nouvellesValeurs = new Tontine();
+        nouvellesValeurs.setMontantCaissePret(new BigDecimal("1000"));
+        nouvellesValeurs.setSoldeCaissePret(new BigDecimal("1000000"));
+
+        TontineDTO resultat = tontineService.updateTontine(6L, nouvellesValeurs).get();
+
+        assertEquals(0, new BigDecimal("1000").compareTo(resultat.getMontantCaissePret()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(resultat.getSoldeCaissePret()));
     }
 
     // TERMINEE est un état final : on ne ressuscite pas une tontine terminée.

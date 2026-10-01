@@ -25,19 +25,20 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.samanatteu.dto.cotisation.CotisationDTO;
 import com.samanatteu.dto.cotisation.PaiementDTO;
-import com.samanatteu.entity.Cotisation;
-import com.samanatteu.entity.Cycle;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.ModePaiementCotisation;
-import com.samanatteu.enums.StatutCotisation;
+import com.samanatteu.entity.cotisation.Cotisation;
+import com.samanatteu.entity.tontine.Cycle;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.cotisation.ModePaiementCotisation;
+import com.samanatteu.enums.cotisation.StatutCotisation;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.cotisation.CotisationDejaPayeeException;
 import com.samanatteu.exception.cotisation.CotisationIntrouvableException;
 import com.samanatteu.exception.cotisation.MontantPayeSuperieurAuDuException;
-import com.samanatteu.repository.CotisationRepository;
-import com.samanatteu.repository.CycleRepository;
+import com.samanatteu.repository.cotisation.CotisationRepository;
+import com.samanatteu.repository.tontine.CycleRepository;
+import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 // Tests des règles de CotisationService (paiement, lecture filtrée), avec de faux repositories.
@@ -50,6 +51,8 @@ class CotisationServiceTest {
     private CotisationRepository cotisationRepository;
     @Mock
     private CycleRepository cycleRepository;
+    @Mock
+    private TontineRepository tontineRepository;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -76,6 +79,7 @@ class CotisationServiceTest {
         Tontine tontine = new Tontine();
         tontine.setId(6L);
         tontine.setGestionnaire(gestionnaire);
+        tontine.setSoldeCaissePret(BigDecimal.ZERO);
         Cycle cycle = new Cycle();
         cycle.setId(41L);
         cycle.setTontine(tontine);
@@ -89,6 +93,9 @@ class CotisationServiceTest {
         c.setParticipation(participation);
         c.setMontantDu(new BigDecimal("10000.00"));
         c.setMontantPaye(new BigDecimal(paye));
+        // Tontine sans caisse de prêts (0) : comportement identique à avant.
+        c.setMontantCaisseDu(BigDecimal.ZERO);
+        c.setMontantCaissePaye(BigDecimal.ZERO);
         c.setStatut(statut);
         return c;
     }
@@ -208,6 +215,83 @@ class CotisationServiceTest {
 
         assertEquals(0, new BigDecimal("10000").compareTo(c.getCycle().getMontantCollecte()));
         verify(cycleRepository).save(c.getCycle());
+    }
+
+    // ------------------------------------------------- caisse de prêts (500)
+    // Un seul paiement couvre la part (10 000) ET la caisse (500) ; la part
+    // est prioritaire. L'argent de la caisse ne va JAMAIS dans
+    // montantCollecte (cagnotte du tirage) mais dans tontine.soldeCaissePret.
+
+    private Cotisation cotisationAvecCaisse(String paye, String caissePaye, StatutCotisation statut) {
+        Cotisation c = cotisation(paye, statut, paye);
+        c.setMontantCaisseDu(new BigDecimal("500"));
+        c.setMontantCaissePaye(new BigDecimal(caissePaye));
+        return c;
+    }
+
+    // 10 500 d'un coup : part 10 000, caisse 500 → COMPLET.
+    @Test
+    void payer_partEtCaisseDUnCoup_repartitEtPasseComplet() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cotisation c = cotisationAvecCaisse("0", "0", StatutCotisation.EN_ATTENTE);
+
+        CotisationDTO resultat = payer(c, "10500");
+
+        assertEquals(StatutCotisation.COMPLET, resultat.getStatut());
+        assertEquals(0, new BigDecimal("10000").compareTo(c.getMontantPaye()));
+        assertEquals(0, new BigDecimal("500").compareTo(c.getMontantCaissePaye()));
+        assertEquals(0, new BigDecimal("10000").compareTo(c.getCycle().getMontantCollecte()));
+        assertEquals(0, new BigDecimal("500").compareTo(c.getCycle().getTontine().getSoldeCaissePret()));
+        verify(tontineRepository).save(c.getCycle().getTontine());
+    }
+
+    // Part prioritaire : 3 000 vont tous à la part, rien à la caisse.
+    @Test
+    void payer_unePartie_remplitDAbordLaPart() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cotisation c = cotisationAvecCaisse("0", "0", StatutCotisation.EN_ATTENTE);
+
+        payer(c, "3000");
+
+        assertEquals(0, new BigDecimal("3000").compareTo(c.getMontantPaye()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(c.getMontantCaissePaye()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(c.getCycle().getTontine().getSoldeCaissePret()));
+    }
+
+    // Part payée mais pas la caisse : PARTIEL, pas COMPLET (sinon les 500
+    // ne pourraient plus jamais être versés : paiement sur COMPLET = 409).
+    @Test
+    void payer_laPartSeule_restePartielTantQueLaCaisseNEstPasPayee() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cotisation c = cotisationAvecCaisse("0", "0", StatutCotisation.EN_ATTENTE);
+
+        assertEquals(StatutCotisation.PARTIEL, payer(c, "10000").getStatut());
+    }
+
+    // Part déjà payée le matin, 500 l'après-midi : tout va à la caisse,
+    // la cagnotte du cycle ne bouge pas → COMPLET.
+    @Test
+    void payer_laCaissePlusTard_vaToutALaCaisse() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cotisation c = cotisationAvecCaisse("10000", "0", StatutCotisation.PARTIEL);
+
+        CotisationDTO resultat = payer(c, "500");
+
+        assertEquals(StatutCotisation.COMPLET, resultat.getStatut());
+        assertEquals(0, new BigDecimal("10000").compareTo(c.getCycle().getMontantCollecte()));
+        assertEquals(0, new BigDecimal("500").compareTo(c.getCycle().getTontine().getSoldeCaissePret()));
+    }
+
+    // Plafond = reste de la part + reste de la caisse : 10 501 refusé.
+    @Test
+    void payer_plusQuePartEtCaisse_estRefuse() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        when(cotisationRepository.findById(7L))
+                .thenReturn(Optional.of(cotisationAvecCaisse("0", "0", StatutCotisation.EN_ATTENTE)));
+
+        assertThrows(MontantPayeSuperieurAuDuException.class,
+                () -> cotisationService.enregistrerPaiement(7L, paiement("10501")));
+        verify(tontineRepository, never()).save(any());
     }
 
     // -------------------------------------------------------- lecture filtrée

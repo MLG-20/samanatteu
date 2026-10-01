@@ -30,11 +30,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.ModificationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.RoleUtilisateur;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
-import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 @ExtendWith(MockitoExtension.class)

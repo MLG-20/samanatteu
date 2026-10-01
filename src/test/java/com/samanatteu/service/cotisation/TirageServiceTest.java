@@ -31,28 +31,28 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.samanatteu.dto.cotisation.TirageDTO;
 import com.samanatteu.dto.cotisation.VersementDTO;
-import com.samanatteu.entity.Cotisation;
-import com.samanatteu.entity.Cycle;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tirage;
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.StatutCotisation;
-import com.samanatteu.enums.StatutCycle;
-import com.samanatteu.enums.StatutParticipation;
-import com.samanatteu.enums.StatutTirage;
+import com.samanatteu.entity.cotisation.Cotisation;
+import com.samanatteu.entity.cotisation.Tirage;
+import com.samanatteu.entity.tontine.Cycle;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.cotisation.StatutTirage;
+import com.samanatteu.enums.tontine.StatutCycle;
+import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.exception.AccesRefuseException;
-import com.samanatteu.exception.tontine.CycleIntrouvableException;
-import com.samanatteu.exception.tontine.CycleNonClotureException;
 import com.samanatteu.exception.cotisation.MontantVerseSuperieurAuDisponibleException;
 import com.samanatteu.exception.cotisation.TirageDejaExistantPourCeCycleException;
 import com.samanatteu.exception.cotisation.TirageIntrouvableException;
 import com.samanatteu.exception.cotisation.TirageNonReportableException;
 import com.samanatteu.exception.cotisation.UrneVideException;
-import com.samanatteu.repository.CotisationRepository;
-import com.samanatteu.repository.CycleRepository;
-import com.samanatteu.repository.ParticipationRepository;
-import com.samanatteu.repository.TirageRepository;
+import com.samanatteu.exception.tontine.CycleIntrouvableException;
+import com.samanatteu.exception.tontine.CycleNonClotureException;
+import com.samanatteu.repository.cotisation.CotisationRepository;
+import com.samanatteu.repository.cotisation.TirageRepository;
+import com.samanatteu.repository.tontine.CycleRepository;
+import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 // Tests des règles de TirageService (tirage au sort, compensation, versement,
@@ -321,6 +321,8 @@ class TirageServiceTest {
         Cotisation dette = new Cotisation();
         dette.setMontantDu(new BigDecimal("10000"));
         dette.setMontantPaye(new BigDecimal("4000"));
+        dette.setMontantCaisseDu(BigDecimal.ZERO);
+        dette.setMontantCaissePaye(BigDecimal.ZERO);
         dette.setStatut(StatutCotisation.EN_RETARD);
         when(cotisationRepository.findByCycleIdAndParticipationId(5L, 3L)).thenReturn(Optional.of(dette));
         saveDuTirageRenvoieLeTirage();
@@ -334,6 +336,30 @@ class TirageServiceTest {
         verify(cycleRepository).save(cycle);
         assertEquals(0, new BigDecimal("40000").compareTo(resultat.getMontantVerse()));
         assertEquals(StatutTirage.VERSE, resultat.getStatut());
+    }
+
+    // Même cas, mais il doit aussi 500 de caisse de prêts : le gain efface
+    // la part, jamais la caisse → il reste EN_RETARD, caisse toujours due.
+    @Test
+    void tirer_gagnantEnRetardAvecCaisseImpayee_resteEnRetard() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cycle cycle = cycle(StatutCycle.CLOTURE, "34000");
+        cycleClotureAvecMembres(cycle, membre(3L, 1));
+        Cotisation dette = new Cotisation();
+        dette.setMontantDu(new BigDecimal("10000"));
+        dette.setMontantPaye(new BigDecimal("4000"));
+        dette.setMontantCaisseDu(new BigDecimal("500"));
+        dette.setMontantCaissePaye(BigDecimal.ZERO);
+        dette.setStatut(StatutCotisation.EN_RETARD);
+        when(cotisationRepository.findByCycleIdAndParticipationId(5L, 3L)).thenReturn(Optional.of(dette));
+        saveDuTirageRenvoieLeTirage();
+
+        tirageService.tirerAuSort(5L);
+
+        assertEquals(StatutCotisation.EN_RETARD, dette.getStatut());
+        assertEquals(0, new BigDecimal("10000").compareTo(dette.getMontantPaye()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(dette.getMontantCaissePaye()));
+        assertEquals(0, new BigDecimal("40000").compareTo(cycle.getMontantCollecte()));
     }
 
     // Le gagnant est à jour (COMPLET) : aucune compensation, rien à toucher.
