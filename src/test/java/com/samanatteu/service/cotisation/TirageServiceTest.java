@@ -6,8 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -39,6 +42,7 @@ import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.cotisation.StatutCotisation;
 import com.samanatteu.enums.cotisation.StatutTirage;
+import com.samanatteu.enums.pret.TypeTransaction;
 import com.samanatteu.enums.tontine.StatutCycle;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.exception.AccesRefuseException;
@@ -54,6 +58,7 @@ import com.samanatteu.repository.cotisation.TirageRepository;
 import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.pret.TransactionService;
 
 // Tests des règles de TirageService (tirage au sort, compensation, versement,
 // report, lecture filtrée), avec de faux repositories.
@@ -71,6 +76,9 @@ class TirageServiceTest {
     private ParticipationRepository participationRepository;
     @Mock
     private CotisationRepository cotisationRepository;
+    // Faux journal : on vérifie seulement QUE et COMMENT il est appelé.
+    @Mock
+    private TransactionService transactionService;
     // Un vrai objet : il lit le SecurityContextHolder rempli par connecter().
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
@@ -112,8 +120,11 @@ class TirageServiceTest {
     }
 
     private Participation membre(long id, int parts) {
+        Utilisateur utilisateur = new Utilisateur();
+        utilisateur.setId(100 + id);
         Participation p = new Participation();
         p.setId(id);
+        p.setMembre(utilisateur);
         p.setNombreParts(parts);
         p.setStatut(StatutParticipation.ACTIF);
         return p;
@@ -148,6 +159,29 @@ class TirageServiceTest {
     // Le faux save() renvoie l'objet reçu (comme la vraie base).
     private void saveDuTirageRenvoieLeTirage() {
         when(tirageRepository.save(any(Tirage.class))).thenAnswer(appel -> appel.getArgument(0));
+    }
+
+    // Comme saveDuTirageRenvoieLeTirage, mais la "base" donne l'id 99 au
+    // tirage : prouve que le journal reçoit l'id APRÈS le save.
+    private void saveDuTirageDonneLId99() {
+        when(tirageRepository.save(any(Tirage.class))).thenAnswer(appel -> {
+            Tirage t = appel.getArgument(0);
+            t.setId(99L);
+            return t;
+        });
+    }
+
+    // Une cotisation EN_RETARD (id 70) : part 10 000 dont "paye" versés,
+    // caisse de prêts "caisseDu" dont rien versé.
+    private Cotisation dette(String paye, String caisseDu) {
+        Cotisation dette = new Cotisation();
+        dette.setId(70L);
+        dette.setMontantDu(new BigDecimal("10000"));
+        dette.setMontantPaye(new BigDecimal(paye));
+        dette.setMontantCaisseDu(new BigDecimal(caisseDu));
+        dette.setMontantCaissePaye(BigDecimal.ZERO);
+        dette.setStatut(StatutCotisation.EN_RETARD);
+        return dette;
     }
 
     // Faux hasard : renvoie toujours l'indice voulu et retient la taille de
@@ -463,6 +497,101 @@ class TirageServiceTest {
         TirageDTO resultat = tirageService.verser(7L, versement("40000"));
 
         assertEquals(StatutTirage.VERSE, resultat.getStatut());
+    }
+
+    // ------------------------------------------------------------ journal
+
+    // Caisse pleine : une ligne GAIN de 40 000 pour le gagnant, avec l'id du
+    // tirage enregistré ; pas de ligne de compensation.
+    @Test
+    void tirer_caissePleine_journaliseUnGainAvecLIdDuTirage() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cycle cycle = cycle(StatutCycle.CLOTURE, "40000");
+        Participation awa = membre(1L, 1);
+        cycleClotureAvecMembres(cycle, awa);
+        saveDuTirageDonneLId99();
+
+        tirageService.tirerAuSort(5L);
+
+        verify(transactionService).journaliser(eq(awa.getMembre()), eq(cycle.getTontine()),
+                eq(TypeTransaction.GAIN), eq(new BigDecimal("40000")), isNull(), isNull(), eq(99L), isNull());
+        verify(transactionService, never()).journaliser(any(), any(), eq(TypeTransaction.COTISATION),
+                any(), any(), any(), any(), any());
+    }
+
+    // Option A : la dette de Coumba (6 000) réglée par son gain s'écrit comme
+    // une COTISATION sans mode, puis le GAIN complet de 40 000.
+    @Test
+    void tirer_gagnantEnRetard_journaliseLaCompensationPuisLeGain() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cycle cycle = cycle(StatutCycle.CLOTURE, "34000");
+        Participation coumba = membre(3L, 1);
+        cycleClotureAvecMembres(cycle, coumba);
+        when(cotisationRepository.findByCycleIdAndParticipationId(5L, 3L))
+                .thenReturn(Optional.of(dette("4000", "0")));
+        saveDuTirageDonneLId99();
+
+        tirageService.tirerAuSort(5L);
+
+        verify(transactionService).journaliser(eq(coumba.getMembre()), eq(cycle.getTontine()),
+                eq(TypeTransaction.COTISATION), eq(new BigDecimal("6000")), isNull(), isNull(), eq(70L),
+                eq("Compensation par le gain du tirage"));
+        verify(transactionService).journaliser(eq(coumba.getMembre()), eq(cycle.getTontine()),
+                eq(TypeTransaction.GAIN), eq(new BigDecimal("40000")), isNull(), isNull(), eq(99L), isNull());
+    }
+
+    // Part entièrement payée, seule la caisse manque : resteDu = 0, donc pas
+    // de ligne de compensation (CHECK montant > 0 annulerait tout le tirage).
+    @Test
+    void tirer_gagnantEnRetardSeulementSurLaCaisse_pasDeLigneDeCompensation() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        cycleClotureAvecMembres(cycle(StatutCycle.CLOTURE, "40000"), membre(3L, 1));
+        when(cotisationRepository.findByCycleIdAndParticipationId(5L, 3L))
+                .thenReturn(Optional.of(dette("10000", "500")));
+        saveDuTirageDonneLId99();
+
+        tirageService.tirerAuSort(5L);
+
+        verify(transactionService, never()).journaliser(any(), any(), eq(TypeTransaction.COTISATION),
+                any(), any(), any(), any(), any());
+    }
+
+    // Caisse vide (EN_ATTENTE) : rien n'est remis, donc aucune ligne à 0.
+    @Test
+    void tirer_caisseVide_nEcritRienAuJournal() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        cycleClotureAvecMembres(cycle(StatutCycle.CLOTURE, "0"), membre(1L, 1));
+        saveDuTirageRenvoieLeTirage();
+
+        tirageService.tirerAuSort(5L);
+
+        verifyNoInteractions(transactionService);
+    }
+
+    // verser : une ligne GAIN du montant remis MAINTENANT (pas du total).
+    @Test
+    void verser_journaliseUnGainDuMontantRemis() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Tirage tirage = tirage(StatutTirage.PARTIEL, "30000", "40000");
+        when(tirageRepository.findById(7L)).thenReturn(Optional.of(tirage));
+        saveDuTirageRenvoieLeTirage();
+
+        tirageService.verser(7L, versement("10000"));
+
+        verify(transactionService).journaliser(eq(tirage.getParticipation().getMembre()),
+                eq(tirage.getCycle().getTontine()), eq(TypeTransaction.GAIN), eq(new BigDecimal("10000")),
+                isNull(), isNull(), eq(7L), isNull());
+    }
+
+    @Test
+    void verser_refuse_nEcritRienAuJournal() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        when(tirageRepository.findById(7L))
+                .thenReturn(Optional.of(tirage(StatutTirage.PARTIEL, "30000", "40000")));
+
+        assertThrows(MontantVerseSuperieurAuDisponibleException.class,
+                () -> tirageService.verser(7L, versement("15000")));
+        verifyNoInteractions(transactionService);
     }
 
     // ------------------------------------------------------------ reporter

@@ -4,8 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -30,8 +33,9 @@ import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
-import com.samanatteu.enums.cotisation.ModePaiementCotisation;
+import com.samanatteu.enums.ModePaiement;
 import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.pret.TypeTransaction;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.cotisation.CotisationDejaPayeeException;
 import com.samanatteu.exception.cotisation.CotisationIntrouvableException;
@@ -40,6 +44,7 @@ import com.samanatteu.repository.cotisation.CotisationRepository;
 import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.pret.TransactionService;
 
 // Tests des règles de CotisationService (paiement, lecture filtrée), avec de faux repositories.
 // Convention : la cotisation 7 (dû 10 000 F) appartient au cycle 41 de la tontine 6, gérée par
@@ -53,6 +58,9 @@ class CotisationServiceTest {
     private CycleRepository cycleRepository;
     @Mock
     private TontineRepository tontineRepository;
+    // Faux journal : on vérifie seulement QUE et COMMENT il est appelé.
+    @Mock
+    private TransactionService transactionService;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -84,8 +92,11 @@ class CotisationServiceTest {
         cycle.setId(41L);
         cycle.setTontine(tontine);
         cycle.setMontantCollecte(new BigDecimal(collecte));
+        Utilisateur membre = new Utilisateur();
+        membre.setId(30L);
         Participation participation = new Participation();
         participation.setId(9L);
+        participation.setMembre(membre);
 
         Cotisation c = new Cotisation();
         c.setId(7L);
@@ -103,7 +114,7 @@ class CotisationServiceTest {
     private PaiementDTO paiement(String montant) {
         PaiementDTO p = new PaiementDTO();
         p.setMontant(new BigDecimal(montant));
-        p.setModePaiement(ModePaiementCotisation.WAVE);
+        p.setModePaiement(ModePaiement.WAVE);
         p.setReference("W-123");
         return p;
     }
@@ -171,7 +182,7 @@ class CotisationServiceTest {
 
         assertEquals(StatutCotisation.PARTIEL, resultat.getStatut());
         assertEquals(0, new BigDecimal("3000").compareTo(resultat.getMontantPaye()));
-        assertEquals(ModePaiementCotisation.WAVE, resultat.getModePaiement());
+        assertEquals(ModePaiement.WAVE, resultat.getModePaiement());
         assertEquals("W-123", resultat.getReference());
         assertNotNull(resultat.getDatePaiement());
     }
@@ -316,6 +327,34 @@ class CotisationServiceTest {
         assertEquals(1, cotisationService.listCotisations().size());
         verify(cotisationRepository, never()).findAll();
         verify(cotisationRepository, never()).findByCycleTontineGestionnaireTelephone(any());
+    }
+
+    // ----------------------------------------------------------------- journal
+
+    // Option 1 : UNE ligne par paiement réel, avec le montant TOTAL versé
+    // (part + caisse), le mode et la référence du paiement, l'id de la cotisation.
+    @Test
+    void payer_ecritUneLigneCotisationAvecLeMontantTotal() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cotisation c = cotisationAvecCaisse("0", "0", StatutCotisation.EN_ATTENTE);
+
+        payer(c, "10500");
+
+        verify(transactionService).journaliser(eq(c.getParticipation().getMembre()),
+                eq(c.getCycle().getTontine()), eq(TypeTransaction.COTISATION),
+                eq(new BigDecimal("10500")), eq(ModePaiement.WAVE), eq("W-123"), eq(7L), isNull());
+    }
+
+    // Paiement refusé → aucune ligne : le journal ne ment jamais.
+    @Test
+    void payer_refuse_nEcritRienAuJournal() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        when(cotisationRepository.findById(7L))
+                .thenReturn(Optional.of(cotisation("10000", StatutCotisation.COMPLET, "10000")));
+
+        assertThrows(CotisationDejaPayeeException.class,
+                () -> cotisationService.enregistrerPaiement(7L, paiement("1000")));
+        verifyNoInteractions(transactionService);
     }
 
     // ------------------------------------------------------------ suppression

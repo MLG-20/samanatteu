@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -38,6 +41,7 @@ import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.pret.StatutEcheancePret;
 import com.samanatteu.enums.pret.StatutPret;
+import com.samanatteu.enums.pret.TypeTransaction;
 import com.samanatteu.enums.tontine.FrequenceTontine;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.tontine.StatutTontine;
@@ -71,6 +75,9 @@ class PretServiceTest {
     private ParticipationRepository participationRepository;
     @Mock
     private EcheancePretRepository echeancePretRepository;
+    // Faux journal : on vérifie seulement QUE et COMMENT il est appelé.
+    @Mock
+    private TransactionService transactionService;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -517,6 +524,73 @@ class PretServiceTest {
         assertEquals(StatutEcheancePret.EN_RETARD, e1.getStatut());
         assertEquals(StatutPret.EN_RETARD, resultat.getStatut());
         verify(pretRepository, never()).save(any());
+    }
+
+    // ---------------------------------------------------------------- journal
+
+    // Prêt de 100 000 à 10 % : la ligne PRET porte le CAPITAL remis (100 000),
+    // pas les 110 000 dus ; l'intérêt entrera avec les remboursements.
+    // La "base" donne l'id 20 au prêt : le journal le reçoit après le save.
+    @Test
+    void accorder_journaliseLeCapitalSeulAvecLIdDuPret() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Tontine tontine = tontine("100000");
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine));
+        when(participationRepository.findByTontineIdAndMembreId(6L, 3L))
+                .thenReturn(Optional.of(participation(StatutParticipation.ACTIF)));
+        when(pretRepository.save(any())).thenAnswer(appel -> {
+            Pret p = appel.getArgument(0);
+            p.setId(20L);
+            return p;
+        });
+        DemandePretDTO demande = demande("100000", 5);
+        demande.setTauxInteret(new BigDecimal("10"));
+
+        pretService.accorderPret(6L, demande);
+
+        verify(transactionService).journaliser(argThat(m -> m.getId() == 3L), eq(tontine),
+                eq(TypeTransaction.PRET), eq(new BigDecimal("100000")), isNull(), isNull(), eq(20L), isNull());
+    }
+
+    @Test
+    void accorder_refuse_nEcritRienAuJournal() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine("50000")));
+        when(participationRepository.findByTontineIdAndMembreId(6L, 3L))
+                .thenReturn(Optional.of(participation(StatutParticipation.ACTIF)));
+
+        assertThrows(CaisseInsuffisanteException.class,
+                () -> pretService.accorderPret(6L, demande("50001", 2)));
+        verifyNoInteractions(transactionService);
+    }
+
+    // Remboursement : une ligne REMBOURSEMENT de tout ce qui entre (60 000).
+    @Test
+    void rembourser_journaliseLeMontantVerse() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Tontine tontine = tontine("0");
+        Pret pret = pret(tontine, StatutPret.ACTIF);
+        when(pretRepository.findById(20L)).thenReturn(Optional.of(pret));
+        when(echeancePretRepository.findByPretIdAndStatutNotOrderByNumeroEcheanceAsc(20L, StatutEcheancePret.PAYE))
+                .thenReturn(List.of(echeance(1, "60000", "0", StatutEcheancePret.EN_ATTENTE)));
+
+        pretService.rembourser(20L, versement("60000"));
+
+        verify(transactionService).journaliser(eq(pret.getMembre()), eq(tontine),
+                eq(TypeTransaction.REMBOURSEMENT), eq(new BigDecimal("60000")), isNull(), isNull(),
+                eq(20L), isNull());
+    }
+
+    @Test
+    void rembourser_refuse_nEcritRienAuJournal() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        when(pretRepository.findById(20L)).thenReturn(Optional.of(pret(tontine("0"), StatutPret.ACTIF)));
+        when(echeancePretRepository.findByPretIdAndStatutNotOrderByNumeroEcheanceAsc(20L, StatutEcheancePret.PAYE))
+                .thenReturn(List.of(echeance(1, "10000", "0", StatutEcheancePret.EN_ATTENTE)));
+
+        assertThrows(MontantPayeSuperieurAuDuException.class,
+                () -> pretService.rembourser(20L, versement("10001")));
+        verifyNoInteractions(transactionService);
     }
 
     // ---------------------------------------------------------------- lecture
