@@ -5,7 +5,7 @@ Spring Boot. Un gestionnaire crée une tontine, y inscrit des membres, et l'appl
 cycles, les cotisations, les tirages et les prêts.
 
 > **État du projet : en développement actif.** Authentification, tontines, participations,
-> cycles et cotisations, tirages, caisse de prêts et prêts sont fonctionnels et testés ;
+> cycles et cotisations, tirages, caisse de prêts, prêts et journal financier sont fonctionnels et testés ;
 > notifications, invitations, import et tableaux de bord restent à faire. Voir
 > [Avancement](#avancement).
 
@@ -281,9 +281,33 @@ prêt : ACTIF ──échéance dépassée (minuit)──▶ EN_RETARD
          └──tout remboursé──▶ REMBOURSE   (état final, aussi depuis EN_RETARD)
 ```
 
+### Journal financier (implémenté, testé)
+
+Chaque mouvement d'argent laisse **une ligne** dans la table `transaction`, comme un relevé
+bancaire. Une ligne n'est **jamais modifiée ni supprimée**, et aucune route ne permet d'en écrire
+une : elle est la conséquence d'une action métier, écrite par le serveur dans la même transaction
+que cette action.
+
+| Action | Ligne écrite | Sens (vu de la tontine) |
+|---|---|---|
+| paiement d'une cotisation | `COTISATION`, montant **total** versé (part + caisse) | `ENTRANT` |
+| tirage d'un gagnant en retard | `COTISATION` de sa dette réglée par son gain, sans mode de paiement | `ENTRANT` |
+| tirage : remise immédiate au gagnant | `GAIN` (si la cagnotte n'est pas vide) | `SORTANT` |
+| versement du reste au gagnant | `GAIN` du montant remis maintenant | `SORTANT` |
+| prêt accordé | `PRET`, le **capital** seul | `SORTANT` |
+| remboursement | `REMBOURSEMENT`, tout ce qui entre (capital + part d'intérêt) | `ENTRANT` |
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `GET` | `/transaction` | `GESTIONNAIRE`, `MEMBRE` | un gestionnaire voit le journal de **ses** tontines ; un membre **uniquement ses propres lignes** ; du plus récent au plus ancien |
+
+Chaque ligne porte : membre, tontine, type, sens, montant (toujours positif, c'est le sens qui
+donne la direction), mode de paiement et référence externe (Wave, Orange Money…) quand ils sont
+connus, `referenceId` (id de la cotisation, du tirage ou du prêt concerné), description, date.
+
 ### Autres ressources (CRUD générique, sans règles métier pour l'instant)
 
-`/transaction`, `/invitation`, `/importMembre`, `/notification`.
+`/invitation`, `/importMembre`, `/notification`.
 
 Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
 
@@ -322,7 +346,7 @@ src/main/java/com/samanatteu/
 │   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── dto/           objets d'échange avec le client (jamais l'entité brute : pas de fuite de mot de passe)
 │   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
-├── enums/         statuts et rôles, regroupés par domaine
+├── enums/         statuts et rôles, regroupés par domaine (ModePaiement, commun, à la racine)
 │   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── exception/     exceptions métier (héritent de SamanatteuException, avec leur code HTTP),
 │   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
@@ -368,18 +392,20 @@ Choix notables :
 ```
 
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
-  `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest` :
+  `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
+  `TransactionServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
   répartition part / caisse, retards à la clôture, composition de l'urne, compensation, versements
   et reports, intérêts, échéanciers (arrondis, dates de fin de mois), remboursements et retards de
-  prêts. Le hasard du tirage est remplacé par un faux `Random` qui
+  prêts, lignes du journal financier (sens déduit du type, montant, id de référence, aucune ligne
+  si l'action est refusée ou si le montant vaut 0). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
   `TirageControllerSecurityTest`, `PretControllerSecurityTest`,
-  `EcheancePretControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -407,28 +433,28 @@ Le développement suit un planning en 8 phases.
 | 1 | Bases : projet, entités, base PostgreSQL | ✅ terminée |
 | 2 | Authentification et rôles | ✅ terminée, sauf « mot de passe oublié » (nécessite l'envoi de SMS, phase 6) |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
-| 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée ; reste le reçu PDF (avec l'historique des paiements) |
+| 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | ⏳ à venir |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- `/transaction`, `/invitation`, `/importMembre` et `/notification` n'ont pas encore de règles
-  métier ni de contrôle de propriété.
-- Une échéance de prêt ne garde que la date de son **dernier** paiement : l'historique des
-  remboursements relèvera aussi de la table `transaction`.
+- `/invitation`, `/importMembre` et `/notification` n'ont pas encore de règles métier ni de
+  contrôle de propriété.
+- Le journal ne connaît pas le **mode de paiement** des gains, des prêts et des remboursements :
+  `tirerAuSort` ne reçoit pas de corps et `VersementDTO` / `DemandePretDTO` n'ont que le montant.
+  Seuls les paiements de cotisation ont leur mode et leur référence.
+- Les **pénalités** (type `PENALITE` prévu dans le journal) n'ont pas encore d'action métier : à
+  concevoir (certaines tontines en appliquent, d'autres non).
 - Ce que devient la caisse de prêts à la fin d'une tontine (partage entre membres ?) n'est pas
   encore décidé ; un prêt ne peut pas être annulé (statut `ANNULE` du CDC non retenu pour l'instant).
 - Les relations JPA sont chargées en `EAGER` (défaut de `@ManyToOne`) sans `JOIN FETCH` : les listes
   font des requêtes N+1. Négligeable à l'échelle d'une tontine, à optimiser dans une étape dédiée.
-- Un tirage ne garde que la date de son **dernier** versement ; l'historique des remises au
-  gagnant relèvera, comme les paiements, de la table `transaction`.
 - Un corps JSON mal formé n'a pas encore de traitement dédié dans `GlobalExceptionHandler`
   (`HttpMessageNotReadableException` n'est pas une `ErrorResponse`) : à vérifier et ramener à 400.
-- Une cotisation ne garde que le mode, la référence et la date de son **dernier** paiement :
-  l'historique des paiements successifs (table `transaction`) et le reçu PDF par paiement restent à
-  faire.
+- Le reçu PDF par paiement reste à faire ; il pourra s'appuyer sur la ligne du journal de chaque
+  paiement.
 - Un membre sorti d'une tontine déjà lancée n'a pas encore d'action dédiée (statut `SORTI`) : retirer un participant n'est possible que tant que la tontine est `EN_ATTENTE`.
 - Le refresh token n'est pas révoqué après usage (pas de stockage côté serveur).
 - Les champs `createdAt` / `updatedAt` ne sont pas encore alimentés.
@@ -586,8 +612,66 @@ reste lisible.
   `pg_dump` a été retiré : des commandes propres à `psql` (`\restrict`), et surtout un
   `set_config('search_path', '', false)` qui aurait vidé le chemin de recherche des tables pour
   toute la connexion, alors que le pool réutilise ses connexions pour Hibernate.
+- **Un journal financier complet, une ligne par mouvement d'argent.** Une cotisation, un tirage ou
+  une échéance ne gardaient que les détails de leur **dernier** paiement : un membre qui payait en
+  deux fois (CASH puis Wave) perdait la trace du premier. La table `transaction` reçoit désormais
+  une ligne pour chaque mouvement (cotisation, gain, prêt, remboursement), jamais modifiée ni
+  supprimée. C'est la base de l'historique d'un membre (US-M01) et du futur reçu PDF.
+- **Le journal est une conséquence, pas une ressource qu'on écrit.** Il n'y a aucun
+  `POST /transaction` : chaque ligne est écrite par le serveur pendant l'action qui déplace
+  l'argent (paiement, tirage, prêt…), dans la même `@Transactional`. Une route d'écriture
+  permettrait d'inscrire « Awa a payé 10 000 » sans que sa cotisation ne change : le journal ne
+  prouverait plus rien. Le CRUD générique existant a été supprimé. Le jour où les pénalités
+  arriveront, ce sera une action métier (avec ses règles) qui écrira dans le journal.
+- **Un seul point d'écriture, et le sens déduit du type.** `TransactionService.journaliser` est la
+  seule méthode qui crée une ligne. L'appelant donne le type (`COTISATION`, `GAIN`…), jamais le sens :
+  un `switch` sans `default` le déduit (`ENTRANT` / `SORTANT`, vu de la caisse de la tontine), et le
+  compilateur refusera tout nouveau type tant qu'on ne lui aura pas donné un sens. Décidé après
+  qu'une copie du bloc d'écriture ait oublié `type` et `sens`, ce qui aurait annulé tous les tirages
+  avec compensation : six copies auraient fini par diverger.
+- **Le montant est toujours positif ; c'est le sens qui donne la direction.** Imposé aussi par la
+  base (`CHECK (montant > 0)`, migration `V2`), en plus de `NOT NULL` sur le type, le sens et le
+  montant. Une ancienne ligne de test mélangeait les deux idées (`-5000` avec un sens `ENTREE`).
+  `type` et `sens` sont des enums stockées par leur nom (`EnumType.STRING`), plus des chaînes libres.
+- **Un paiement réel = une ligne**, même quand le serveur le partage entre la part et la caisse de
+  prêts : le journal raconte ce que le membre a tendu (et ce que dira son reçu) ; le partage
+  interne reste visible sur la cotisation.
+- **Une dette réglée par un gain s'écrit en deux lignes.** Quand le gagnant d'un tirage était
+  lui-même en retard, sa dette est effacée par son gain : on écrit la `COTISATION` réglée (sans
+  mode de paiement, avec une description) **et** le `GAIN` complet, comme le ferait un comptable,
+  plutôt que la seule différence remise en main. Ainsi, pour un cycle, la somme des lignes
+  `COTISATION` égale `montantCollecte` et celle des `GAIN` égale `montantVerse`, et l'historique du
+  membre montre que sa cotisation est payée.
+- **Une ligne `PRET` porte le capital, pas le total dû.** Ce jour-là, seul le capital sort de la
+  caisse ; l'intérêt n'existe pas encore et entrera avec les remboursements. Le journal et le solde
+  de la caisse racontent toujours la même histoire.
+- **Un membre ne voit que ses propres lignes du journal.** Cohérent avec les prêts (une dette est
+  privée) ; voir les mouvements des autres ferait apparaître leurs prêts.
+- **`ModePaiementCotisation` renommé `ModePaiement`** et rangé à la racine de `enums/` : un gain ou
+  un prêt se règle aussi en CASH ou par Wave. Sans effet sur la base, qui stocke le nom des valeurs.
 
 ### Bugs trouvés et corrigés
+
+- **N'importe quel utilisateur connecté pouvait falsifier le journal financier.** `/transaction`
+  n'avait aucune règle dans `SecurityConfig` et exposait un CRUD générique : un `MEMBRE` pouvait
+  inventer une ligne, en modifier une ou effacer celles d'une tontine qui n'était même pas la
+  sienne, et `GET /transaction` renvoyait les mouvements de toutes les tontines de la plateforme.
+  Même faille que sur `/cycle`, `/tirage` et `/pret`. Routes d'écriture supprimées, lecture filtrée
+  par rôle, règle ajoutée (l'ADMIN reçoit 403).
+- **La contrainte de la base a révélé deux cas où un tirage aurait échoué.** Un gagnant peut être
+  « en retard » uniquement sur la caisse de prêts, sa part étant payée : la ligne de compensation
+  aurait valu 0. De même, un tirage dont la cagnotte est vide ne remet rien au gagnant. Avec
+  `CHECK (montant > 0)`, ces lignes à 0 auraient fait annuler tout le tirage (la base refuse, la
+  transaction entière recule) ; sans la contrainte, elles auraient été écrites en silence. Repéré à
+  la conception, avant tout commit : ces lignes ne sont écrites que si le montant est positif, et
+  deux tests le vérifient.
+- **Trois erreurs attrapées en revue avant tout commit, désormais couvertes par des tests.** Une
+  copie du bloc d'écriture oubliait `type` et `sens` (refusés par `NOT NULL` : tous les tirages
+  avec compensation auraient échoué) ; le versement du reste au gagnant était journalisé comme une
+  `COTISATION`, donc comme de l'argent **entrant** ; et la ligne d'un prêt pointait vers l'id de la
+  **tontine** au lieu de celui du prêt, une erreur qu'aucun compilateur ne voit (deux `Long`). Les
+  tests vérifient le type, le sens, le montant et l'id de référence de chaque ligne ; sept bugs ont
+  été réintroduits volontairement pour vérifier qu'un test les détecte.
 
 - **N'importe quel utilisateur connecté pouvait s'accorder un prêt ou effacer une dette.** `/pret`
   et `/echeancePret` n'avaient aucune règle dans `SecurityConfig` et exposaient un CRUD générique :
