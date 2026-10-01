@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 
 import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Participation;
-import com.samanatteu.enums.cotisation.ModePaiementCotisation;
+import com.samanatteu.enums.ModePaiement;
 import com.samanatteu.enums.cotisation.StatutCotisation;
 
 import jakarta.persistence.Column;
@@ -62,7 +62,7 @@ public class Cotisation {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "mode_paiement")
-    private ModePaiementCotisation modePaiement;
+    private ModePaiement modePaiement;
 
     @Column(name = "reference")
     private String reference;

@@ -1,62 +1,72 @@
 package com.samanatteu.service.pret;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.pret.TransactionDTO;
 import com.samanatteu.entity.pret.Transaction;
-import com.samanatteu.exception.cotisation.MontantInvalideException;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.ModePaiement;
+import com.samanatteu.enums.pret.SensTransaction;
+import com.samanatteu.enums.pret.TypeTransaction;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.repository.pret.TransactionRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
 public class TransactionService {
     private final TransactionRepository transactionRepository;
+    private final UtilisateurConnecte utilisateurConnecte;
 
-    public TransactionService(TransactionRepository transactionRepository) {
+    public TransactionService(TransactionRepository transactionRepository, UtilisateurConnecte utilisateurConnecte) {
         this.transactionRepository = transactionRepository;
+        this.utilisateurConnecte = utilisateurConnecte;
     }
 
+    // Lecture filtrée (option 1) : gestionnaire → journal de SES tontines ;
+    // membre → SES lignes seulement (prêts privés). ADMIN refusé avant (403).
     public List<TransactionDTO> listTransactions() {
-        return transactionRepository.findAll()
-                .stream()
+        boolean estGestionnaire = utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE);
+
+        List<Transaction> transactions = estGestionnaire
+        ? transactionRepository.findByTontineGestionnaireTelephoneOrderByDateTransactionDesc(utilisateurConnecte.telephone())
+        :transactionRepository.findByMembreTelephoneOrderByDateTransactionDesc(utilisateurConnecte.telephone());
+        return transactions.stream()
                 .map(this::convertiTransactionDTO)
                 .toList();
     }
 
-    public TransactionDTO createTransaction(Transaction transaction) {
-        if (transaction.getMontant().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new MontantInvalideException(transaction.getMontant());
-        }
-        Transaction enregistre = transactionRepository.save(transaction);
-        return convertiTransactionDTO(enregistre);
-    }
+    // Seul point d'écriture du journal : sens et dates sont déduits ici, pour
+    // qu'aucun appelant ne puisse les oublier ou se tromper.
+    public void journaliser(Utilisateur membre, Tontine tontine, TypeTransaction type,
+            BigDecimal montant, ModePaiement modePaiement, String reference,
+            Long referenceId, String description) {
+        // Sens vu de la tontine. Pas de default : un nouveau type ajouté à
+        // l'enum ne compilera pas tant qu'on ne lui aura pas donné un sens.
+        SensTransaction sens = switch (type) {
+            case COTISATION, REMBOURSEMENT, PENALITE -> SensTransaction.ENTRANT;
+            case GAIN, PRET -> SensTransaction.SORTANT;
 
-    public Optional<TransactionDTO> updateTransaction(Long id, Transaction transactionModifier) {
-        return transactionRepository.findById(id).map(transactionExsitante -> {
-            transactionExsitante.setMembre(transactionModifier.getMembre());
-            transactionExsitante.setTontine(transactionModifier.getTontine());
-            transactionExsitante.setType(transactionModifier.getType());
-            transactionExsitante.setMontant(transactionModifier.getMontant());
-            transactionExsitante.setSens(transactionModifier.getSens());
-            transactionExsitante.setReferenceId(transactionModifier.getReferenceId());
-            transactionExsitante.setDescription(transactionModifier.getDescription());
-            transactionExsitante.setDateTransaction(transactionModifier.getDateTransaction());
-            transactionExsitante.setCreatedAt(transactionModifier.getCreatedAt());
+        };
 
-            Transaction enregistree = transactionRepository.save(transactionExsitante);
-            return convertiTransactionDTO(enregistree);
-        });
-    }
+        Transaction transaction = new Transaction();
+        transaction.setMembre(membre);
+        transaction.setTontine(tontine);
+        transaction.setType(type);
+        transaction.setSens(sens);
+        transaction.setMontant(montant);
+        transaction.setModePaiement(modePaiement);
+        transaction.setReference(reference);
+        transaction.setReferenceId(referenceId);
+        transaction.setDescription(description);
+        transaction.setDateTransaction(LocalDateTime.now());
+        transaction.setCreatedAt(LocalDateTime.now());
+        transactionRepository.save(transaction);
 
-    public boolean deleteTransaction(Long id) {
-        if (transactionRepository.existsById(id)) {
-            transactionRepository.deleteById(id);
-            return true;
-        }
-        return false;
     }
 
     private TransactionDTO convertiTransactionDTO(Transaction transaction) {
@@ -67,6 +77,8 @@ public class TransactionService {
         dto.setType(transaction.getType());
         dto.setMontant(transaction.getMontant());
         dto.setSens(transaction.getSens());
+        dto.setModePaiement(transaction.getModePaiement());
+        dto.setReference(transaction.getReference());
         dto.setReferenceId(transaction.getReferenceId());
         dto.setDescription(transaction.getDescription());
         dto.setDateTransaction(transaction.getDateTransaction());

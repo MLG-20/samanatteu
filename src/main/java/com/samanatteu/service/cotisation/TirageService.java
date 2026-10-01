@@ -19,6 +19,7 @@ import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.enums.cotisation.StatutCotisation;
 import com.samanatteu.enums.cotisation.StatutTirage;
+import com.samanatteu.enums.pret.TypeTransaction;
 import com.samanatteu.enums.tontine.StatutCycle;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
@@ -34,6 +35,7 @@ import com.samanatteu.repository.cotisation.TirageRepository;
 import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.pret.TransactionService;
 
 @Service
 public class TirageService {
@@ -42,6 +44,7 @@ public class TirageService {
     private final UtilisateurConnecte utilisateurConnecte;
     private final ParticipationRepository participationRepository;
     private final CotisationRepository cotisationRepository;
+    private final TransactionService transactionService;
     // SecureRandom (imprévisible) et non Random (prévisible) : un tirage
     // d'argent ne doit pas pouvoir être deviné (CDC US-G05, transparence).
     // Déclaré en Random : SecureRandom en hérite (polymorphisme).
@@ -49,12 +52,13 @@ public class TirageService {
 
     public TirageService(TirageRepository tirageRepository, CycleRepository cycleRepository,
             UtilisateurConnecte utilisateurConnecte, ParticipationRepository participationRepository,
-            CotisationRepository cotisationRepository) {
+            CotisationRepository cotisationRepository, TransactionService transactionService) {
         this.tirageRepository = tirageRepository;
         this.cycleRepository = cycleRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.participationRepository = participationRepository;
         this.cotisationRepository = cotisationRepository;
+        this.transactionService = transactionService;
     }
 
     // Lecture filtrée : le gestionnaire voit les tirages de SES tontines,
@@ -154,8 +158,16 @@ public class TirageService {
             if (cotisation.getMontantCaissePaye().compareTo(cotisation.getMontantCaisseDu()) == 0) {
                 cotisation.setStatut(StatutCotisation.COMPLET);
             }
-
             cotisationRepository.save(cotisation);
+
+            // Journal (option A) : la dette réglée par le gain s'écrit comme
+            // une cotisation, sans mode (aucun argent n'a circulé). resteDu
+            // vaut 0 si seule la caisse manquait : CHECK montant > 0.
+            if (resteDu.compareTo(BigDecimal.ZERO) > 0) {
+                transactionService.journaliser(gagnant.getMembre(), cycle.getTontine(),
+                        TypeTransaction.COTISATION, resteDu, null, null, cotisation.getId(),
+                        "Compensation par le gain du tirage");
+            }
 
             // BigDecimal est immuable : add() renvoie un NOUVEL objet, d'où
             // le set. Après ça, la cagnotte du cycle (montantCollecte, à ne
@@ -194,6 +206,15 @@ public class TirageService {
         }
 
         Tirage enregistre = tirageRepository.save(tirage);
+
+        // Journal : ce qui est remis tout de suite au gagnant. Après le save
+        // pour avoir l'id du tirage ; rien si EN_ATTENTE (CHECK montant > 0).
+        // Mode inconnu : tirerAuSort ne reçoit pas de corps (limite connue).
+        if (montantVerse.compareTo(BigDecimal.ZERO) > 0) {
+            transactionService.journaliser(gagnant.getMembre(), cycle.getTontine(), TypeTransaction.GAIN,
+                    montantVerse, null, null, enregistre.getId(), null);
+        }
+
         return convertiTirageDTO(enregistre);
 
     }
@@ -201,7 +222,8 @@ public class TirageService {
     // Enregistre une remise d'argent au gagnant, quand elle a RÉELLEMENT
     // lieu (décision : pas automatique au paiement d'un retard), pour que
     // montantVerse dise toujours la vérité aux membres.
-    // Pas de @Transactional : un seul save, déjà « tout ou rien ».
+    // @Transactional : tirage + ligne du journal, tout ou rien.
+    @Transactional
     public TirageDTO verser(Long tirageId, VersementDTO versement) {
         // tirage → cycle → tontine : on remonte les relations pour
         // vérifier le propriétaire (frontière entre gestionnaires, SaaS).
@@ -229,6 +251,13 @@ public class TirageService {
         }
 
         Tirage enregistre = tirageRepository.save(tirage);
+
+        // Journal : seulement ce qui est remis maintenant (pas le total).
+        // Pas de if : @Positive sur VersementDTO garantit un montant > 0.
+        transactionService.journaliser(tirage.getParticipation().getMembre(), tirage.getCycle().getTontine(),
+                TypeTransaction.GAIN,
+                versement.getMontant(), null, null, tirageId, null);
+
         return convertiTirageDTO(enregistre);
     }
 

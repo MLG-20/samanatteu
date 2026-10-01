@@ -14,6 +14,7 @@ import com.samanatteu.entity.cotisation.Cotisation;
 import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.pret.TypeTransaction;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.cotisation.CotisationDejaPayeeException;
 import com.samanatteu.exception.cotisation.CotisationIntrouvableException;
@@ -22,6 +23,7 @@ import com.samanatteu.repository.cotisation.CotisationRepository;
 import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.pret.TransactionService;
 
 @Service
 public class CotisationService {
@@ -29,13 +31,16 @@ public class CotisationService {
     private final CotisationRepository cotisationRepository;
     private final UtilisateurConnecte utilisateurConnecte;
     private final TontineRepository tontineRepository;
+    private final TransactionService transactionService;
 
     public CotisationService(CotisationRepository cotisationRepository, UtilisateurConnecte utilisateurConnecte,
-            CycleRepository cycleRepository, TontineRepository tontineRepository) {
+            CycleRepository cycleRepository, TontineRepository tontineRepository,
+            TransactionService transactionsService) {
         this.cotisationRepository = cotisationRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.cycleRepository = cycleRepository;
         this.tontineRepository = tontineRepository;
+        this.transactionService = transactionsService;
     }
 
     // Lecture filtrée par rôle (règle R6), comme listParticipation :
@@ -136,6 +141,12 @@ public class CotisationService {
         Tontine tontine = cycle.getTontine();
         tontine.setSoldeCaissePret(tontine.getSoldeCaissePret().add(verseCaisse));
         tontineRepository.save(tontine);
+
+        // Journal : une ligne par paiement réel, montant TOTAL (part + caisse,
+        // option 1). Même @Transactional : pas de paiement sans sa ligne.
+        transactionService.journaliser(cotisation.getParticipation().getMembre(), tontine,
+                TypeTransaction.COTISATION, paiement.getMontant(), paiement.getModePaiement(),
+                paiement.getReference(), cotisation.getId(), null);
 
         Cotisation enregistree = cotisationRepository.save(cotisation);
         return convertiCotisationDTO(enregistree);

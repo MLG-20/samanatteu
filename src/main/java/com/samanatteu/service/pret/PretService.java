@@ -18,6 +18,7 @@ import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.enums.pret.StatutEcheancePret;
 import com.samanatteu.enums.pret.StatutPret;
+import com.samanatteu.enums.pret.TypeTransaction;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
@@ -42,15 +43,17 @@ public class PretService {
     private final UtilisateurConnecte utilisateurConnecte;
     private final ParticipationRepository participationRepository;
     private final EcheancePretRepository echeancePretRepository;
+    private final TransactionService transactionService;
 
     public PretService(PretRepository pretRepository, TontineRepository tontineRepository,
             UtilisateurConnecte utilisateurConnecte, ParticipationRepository participationRepository,
-            EcheancePretRepository echeancePretRepository) {
+            EcheancePretRepository echeancePretRepository, TransactionService transactionService) {
         this.pretRepository = pretRepository;
         this.tontineRepository = tontineRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.participationRepository = participationRepository;
         this.echeancePretRepository = echeancePretRepository;
+        this.transactionService = transactionService;
     }
 
     // Gestionnaire : prêts de ses tontines. Membre : ses propres prêts
@@ -160,6 +163,11 @@ public class PretService {
             echeancePretRepository.save(echeance);
         }
 
+        // Journal : le capital remis aujourd'hui (comme le subtract du
+        // solde) ; l'intérêt rentrera avec les remboursements.
+        transactionService.journaliser(participation.getMembre(), tontine, TypeTransaction.PRET, demande.getMontant(),
+                null, null, enregistre.getId(), null);
+
         return convertiPretDTO(enregistre);
     }
 
@@ -212,6 +220,11 @@ public class PretService {
         Tontine tontine = pret.getTontine();
         tontine.setSoldeCaissePret(tontine.getSoldeCaissePret().add(versement.getMontant()));
         tontineRepository.save(tontine);
+
+        // Journal : tout ce qui entre (capital + part d'intérêt), comme l'add
+        // du solde. Pas de if : @Positive sur VersementDTO.
+        transactionService.journaliser(pret.getMembre(), tontine, TypeTransaction.REMBOURSEMENT,
+                versement.getMontant(), null, null, pret.getId(), null);
 
         // Paiement == tout ce qui restait → prêt soldé (statut final).
         // Sinon, plus aucune échéance EN_RETARD → le prêt redevient ACTIF.

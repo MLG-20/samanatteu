@@ -3,6 +3,10 @@ package com.samanatteu.dto.pret;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import com.samanatteu.enums.ModePaiement;
+import com.samanatteu.enums.pret.SensTransaction;
+import com.samanatteu.enums.pret.TypeTransaction;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -21,11 +25,17 @@ public class TransactionDTO {
 
     private Long tontineId;
 
-    private String type;
+    private TypeTransaction type;
 
     private BigDecimal montant;
 
-    private String sens;
+    private SensTransaction sens;
+
+    private ModePaiement modePaiement;
+
+    // Référence externe (Wave, Orange Money...), à ne pas confondre avec
+    // referenceId (id de la cotisation ou du prêt dans notre base).
+    private String reference;
 
     private Long referenceId;
 

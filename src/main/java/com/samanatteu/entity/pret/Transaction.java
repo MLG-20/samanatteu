@@ -1,13 +1,18 @@
 package com.samanatteu.entity.pret;
+
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
-
+import com.samanatteu.enums.ModePaiement;
+import com.samanatteu.enums.pret.SensTransaction;
+import com.samanatteu.enums.pret.TypeTransaction;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -36,14 +41,25 @@ public class Transaction {
     @JoinColumn(name = "tontine_id")
     private Tontine tontine;
 
+    // STRING : on stocke le nom ("GAIN"), pas la position, qui changerait
+    // si on réordonnait l'enum.
+    @Enumerated(EnumType.STRING)
     @Column(name = "type")
-    private String type;
+    private TypeTransaction type;
 
     @Column(name = "montant")
     private BigDecimal montant;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "sens")
-    private String sens;
+    private SensTransaction sens;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement")
+    private ModePaiement modePaiement;
+
+    @Column(name = "reference")
+    private String reference;
 
     @Column(name = "reference_id")
     private Long referenceId;

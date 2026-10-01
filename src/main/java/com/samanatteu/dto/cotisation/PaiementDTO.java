@@ -2,7 +2,7 @@ package com.samanatteu.dto.cotisation;
 
 import java.math.BigDecimal;
 
-import com.samanatteu.enums.cotisation.ModePaiementCotisation;
+import com.samanatteu.enums.ModePaiement;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -25,7 +25,7 @@ public class PaiementDTO {
     private BigDecimal montant;
 
     @NotNull(message = "Le mode de paiement est obligatoire (CASH, WAVE, ORANGE ou FREE).")
-    private ModePaiementCotisation modePaiement;
+    private ModePaiement modePaiement;
 
     // Facultative : n° de transaction Wave/Orange/Free ; rien pour du CASH.
     private String reference;

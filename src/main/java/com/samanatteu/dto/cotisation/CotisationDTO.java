@@ -3,7 +3,7 @@ package com.samanatteu.dto.cotisation;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.cotisation.ModePaiementCotisation;
+import com.samanatteu.enums.ModePaiement;
 import com.samanatteu.enums.cotisation.StatutCotisation;
 
 import lombok.Getter;
@@ -32,7 +32,7 @@ public class CotisationDTO {
 
     private LocalDateTime datePaiement;
 
-    private ModePaiementCotisation modePaiement;
+    private ModePaiement modePaiement;
 
     private String reference;
 
