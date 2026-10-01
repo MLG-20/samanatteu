@@ -11,6 +11,10 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: true
+  # Flyway modifie la base (db/migration), Hibernate la vérifie (validate).
+  flyway:
+    # Base déjà remplie sans historique : marquée « version 1 » sans rejouer V1.
+    baseline-on-migrate: true
 
 jwt:
   secret: ${JWT_SECRET}

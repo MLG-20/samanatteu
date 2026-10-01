@@ -34,7 +34,7 @@ cycles, les cotisations, les tirages et les prêts.
 - **Java 21**, **Spring Boot 4.1.1** (Maven wrapper inclus)
 - Spring Web (REST), Spring Data JPA / Hibernate, Bean Validation
 - Spring Security + **JWT** ([jjwt](https://github.com/jwtk/jjwt) 0.12.6), mots de passe hachés en BCrypt
-- **PostgreSQL**
+- **PostgreSQL**, schéma versionné avec **Flyway** (12.4)
 - Lombok
 - Tests : JUnit 5, Mockito, MockMvc, Spring Security Test
 
@@ -52,10 +52,11 @@ sudo -u postgres psql <<'SQL'
 CREATE USER samanatteu_user WITH PASSWORD 'choisis_un_mot_de_passe';
 CREATE DATABASE samanatteu OWNER samanatteu_user;
 SQL
-
-# Créer les 12 tables (l'application valide le schéma au démarrage, elle ne le crée pas)
-psql -h localhost -U samanatteu_user -d samanatteu -f db/schema.sql
 ```
+
+Les tables sont créées au premier démarrage par Flyway, à partir des migrations de
+`src/main/resources/db/migration/` (`V1__schema_initial.sql`, puis `V2__…`). Hibernate ne fait
+ensuite que vérifier que le schéma correspond aux entités (`ddl-auto: validate`).
 
 ### 2. Configurer les secrets
 
@@ -393,7 +394,7 @@ Choix notables :
 
 ```bash
 sudo -u postgres createdb -O samanatteu_user samanatteu_test
-psql -h localhost -U samanatteu_user -d samanatteu_test -f db/schema.sql
+# Flyway crée les tables au premier démarrage sur la base vide
 ./mvnw spring-boot:run -Dspring-boot.run.arguments="--server.port=8081 --spring.profiles.active=test"
 ```
 
@@ -434,7 +435,6 @@ Le développement suit un planning en 8 phases.
 - Comment devient-on `GESTIONNAIRE` : décidé pour un modèle par **abonnement** (voir le journal
   ci-dessous), pas encore implémenté — aujourd'hui l'inscription permet encore de choisir
   `GESTIONNAIRE` ou `MEMBRE` librement.
-- Pas de migration de base (Flyway/Liquibase) : le schéma est fourni tel quel dans `db/schema.sql`.
 - `POST /tontine`, `PUT /tontine/{id}` et `/participation` reçoivent encore l'entité JPA plutôt
   qu'un DTO d'entrée (protégées par une recopie champ par champ, à migrer vers des DTO).
 - L'inscription enregistre encore un email vide (`""`) tel quel au lieu de `null`.
@@ -575,6 +575,17 @@ reste lisible.
   les retards » dépendait de la mémoire de la gestionnaire. `@Scheduled` lance la vérification à
   minuit, sans utilisateur connecté (donc sans contrôle de propriété, et jamais exposée par une
   route). Le même mécanisme servira aux rappels J-3 de la phase notifications.
+- **Le schéma de la base est versionné avec Flyway.** Jusqu'à la phase 5, chaque nouvelle colonne
+  était ajoutée à la main (`ALTER TABLE`) dans les deux bases, puis recopiée dans un
+  `db/schema.sql` : rien ne garantissait que les bases et le fichier restaient identiques. Chaque
+  changement est désormais une migration numérotée (`V1`, `V2`…), commitée avec le code qui en a
+  besoin et appliquée automatiquement au démarrage ; une migration déjà appliquée n'est jamais
+  modifiée (Flyway vérifie sa somme de contrôle), on en écrit une nouvelle. `V1` reprend le schéma
+  existant ; les bases déjà remplies ont été marquées « version 1 » sans la rejouer
+  (`baseline-on-migrate`), et `V1` a été vérifiée à part sur un schéma vide. L'en-tête produit par
+  `pg_dump` a été retiré : des commandes propres à `psql` (`\restrict`), et surtout un
+  `set_config('search_path', '', false)` qui aurait vidé le chemin de recherche des tables pour
+  toute la connexion, alors que le pool réutilise ses connexions pour Hibernate.
 
 ### Bugs trouvés et corrigés
 
