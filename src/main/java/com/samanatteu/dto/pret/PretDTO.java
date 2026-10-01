@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.StatutPret;
+import com.samanatteu.enums.pret.StatutPret;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -29,9 +29,13 @@ public class PretDTO {
 
     private BigDecimal tauxInteret;
 
+    private BigDecimal montantInteret;
+
     private Integer nbEcheances;
 
     private LocalDate dateAccord;
+
+    private LocalDate dateDebutRemboursement;
 
     private StatutPret statut;
 

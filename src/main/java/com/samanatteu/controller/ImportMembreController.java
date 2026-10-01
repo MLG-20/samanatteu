@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.onboarding.ImportMembreDTO;
-import com.samanatteu.entity.ImportMembre;
+import com.samanatteu.entity.onboarding.ImportMembre;
 import com.samanatteu.service.onboarding.ImportMembreService;
 
 @RequestMapping("/importMembre")

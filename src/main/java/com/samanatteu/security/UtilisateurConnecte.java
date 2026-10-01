@@ -3,8 +3,8 @@ package com.samanatteu.security;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.enums.RoleUtilisateur;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 
 @Component

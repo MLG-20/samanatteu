@@ -2,7 +2,7 @@ package com.samanatteu.dto.utilisateur;
 
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.RoleUtilisateur;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

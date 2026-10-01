@@ -1,6 +1,6 @@
 package com.samanatteu.dto.utilisateur;
 
-import com.samanatteu.enums.RoleUtilisateur;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

@@ -1,63 +1,66 @@
 package com.samanatteu.service.pret;
 
+import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.samanatteu.dto.pret.EcheancePretDTO;
-import com.samanatteu.entity.EcheancePret;
-import com.samanatteu.exception.cotisation.MontantPayeSuperieurAuDuException;
-import com.samanatteu.exception.pret.NumeroEcheanceDejaExistantException;
-import com.samanatteu.repository.EcheancePretRepository;
+import com.samanatteu.entity.pret.EcheancePret;
+import com.samanatteu.entity.pret.Pret;
+import com.samanatteu.enums.pret.StatutEcheancePret;
+import com.samanatteu.enums.pret.StatutPret;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
+import com.samanatteu.repository.pret.EcheancePretRepository;
+import com.samanatteu.repository.pret.PretRepository;
+import com.samanatteu.security.UtilisateurConnecte;
 
-@Service 
+@Service
 public class EcheancePretService {
-     private final EcheancePretRepository echeancePretRepository;
+    private final EcheancePretRepository echeancePretRepository;
+    private final UtilisateurConnecte utilisateurConnecte;
+    private final PretRepository pretRepository;
 
-    public EcheancePretService(EcheancePretRepository echeancePretRepository) {
+    public EcheancePretService(EcheancePretRepository echeancePretRepository, UtilisateurConnecte utilisateurConnecte,
+            PretRepository pretRepository) {
         this.echeancePretRepository = echeancePretRepository;
+        this.utilisateurConnecte = utilisateurConnecte;
+        this.pretRepository = pretRepository;
     }
 
+    // Même filtre que listPret, en passant par le prêt de l'échéance.
     public List<EcheancePretDTO> listEcheancePret() {
-        return echeancePretRepository.findAll()
-                .stream()
+        boolean estGestionnaire = utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE);
+        List<EcheancePret> echeances = estGestionnaire
+                ? echeancePretRepository.findByPretTontineGestionnaireTelephone(utilisateurConnecte.telephone())
+                : echeancePretRepository.findByPretMembreTelephone(utilisateurConnecte.telephone());
+
+        return echeances.stream()
                 .map(this::convertiEcheancePretDTO)
                 .toList();
     }
 
-    public EcheancePretDTO createEcheancePret(EcheancePret echeancePret) {
-        if (echeancePretRepository.existsByNumeroEcheanceAndPretId(echeancePret.getNumeroEcheance(), echeancePret.getPret().getId())) {
-            throw new NumeroEcheanceDejaExistantException(echeancePret.getNumeroEcheance(), echeancePret.getPret().getId());
-        }
-        if (echeancePret.getMontantPaye().compareTo(echeancePret.getMontantDu()) > 0) {
-            throw new MontantPayeSuperieurAuDuException(echeancePret.getMontantPaye(), echeancePret.getMontantDu());
-        }
-        EcheancePret enregistre = echeancePretRepository.save(echeancePret);
-        return convertiEcheancePretDTO(enregistre);
-    }
+    // Chaque nuit à minuit, lancée par Spring (aucun utilisateur connecté,
+    // donc pas de verifierGestionnaire ; jamais exposée par une route).
+    // Échéances EN_ATTENTE dépassées → EN_RETARD, et leur prêt aussi.
+    @Scheduled(cron = "0 0 0 * * *")
+    @Transactional
+    public void marquerRetard() {
+        List<EcheancePret> depassees = echeancePretRepository
+                .findByStatutAndDateEcheanceBefore(StatutEcheancePret.EN_ATTENTE, LocalDate.now());
 
-    public Optional<EcheancePretDTO> updateEcheancePret(Long id, EcheancePret echeancePretModifier) {
-        return echeancePretRepository.findById(id).map(echeancePretExsitante -> {
-            echeancePretExsitante.setPret(echeancePretModifier.getPret());
-            echeancePretExsitante.setNumeroEcheance(echeancePretModifier.getNumeroEcheance());
-            echeancePretExsitante.setMontantDu(echeancePretModifier.getMontantDu());
-            echeancePretExsitante.setMontantPaye(echeancePretModifier.getMontantPaye());
-            echeancePretExsitante.setDateEcheance(echeancePretModifier.getDateEcheance());
-            echeancePretExsitante.setDatePaiement(echeancePretModifier.getDatePaiement());
-            echeancePretExsitante.setStatut(echeancePretModifier.getStatut());
+        for (EcheancePret echeance : depassees) {
+            echeance.setStatut(StatutEcheancePret.EN_RETARD);
+            echeancePretRepository.save(echeance);
 
-            EcheancePret enregistre = echeancePretRepository.save(echeancePretExsitante);
-            return convertiEcheancePretDTO(enregistre);
-        });
-    }
-
-    public boolean deleteEcheancePret(Long id) {
-        if (echeancePretRepository.existsById(id)) {
-            echeancePretRepository.deleteById(id);
-            return true;
+            Pret pret = echeance.getPret();
+            if (pret.getStatut() == StatutPret.ACTIF) {
+                pret.setStatut(StatutPret.EN_RETARD);
+                pretRepository.save(pret);
+            }
         }
-        return false;
     }
 
     private EcheancePretDTO convertiEcheancePretDTO(EcheancePret echeancePret) {

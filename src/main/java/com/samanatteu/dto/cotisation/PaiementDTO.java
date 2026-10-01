@@ -2,7 +2,7 @@ package com.samanatteu.dto.cotisation;
 
 import java.math.BigDecimal;
 
-import com.samanatteu.enums.ModePaiementCotisation;
+import com.samanatteu.enums.cotisation.ModePaiementCotisation;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;

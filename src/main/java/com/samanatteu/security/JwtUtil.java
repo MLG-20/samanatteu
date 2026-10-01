@@ -7,7 +7,7 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import com.samanatteu.entity.Utilisateur;
+import com.samanatteu.entity.utilisateur.Utilisateur;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;

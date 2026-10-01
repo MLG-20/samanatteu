@@ -7,11 +7,11 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.onboarding.InvitationDTO;
-import com.samanatteu.entity.Invitation;
-import com.samanatteu.enums.StatutInvitation;
+import com.samanatteu.entity.onboarding.Invitation;
+import com.samanatteu.enums.onboarding.StatutInvitation;
 import com.samanatteu.exception.onboarding.InvitationDejaUtiliseeException;
 import com.samanatteu.exception.onboarding.InvitationExpireeException;
-import com.samanatteu.repository.InvitationRepository;
+import com.samanatteu.repository.onboarding.InvitationRepository;
 
 @Service
 public class InvitationService {

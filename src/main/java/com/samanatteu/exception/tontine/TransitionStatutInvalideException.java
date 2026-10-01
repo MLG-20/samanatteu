@@ -2,7 +2,7 @@ package com.samanatteu.exception.tontine;
 
 import org.springframework.http.HttpStatus;
 
-import com.samanatteu.enums.StatutTontine;
+import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.exception.SamanatteuException;
 
 public class TransitionStatutInvalideException extends SamanatteuException {

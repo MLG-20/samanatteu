@@ -3,7 +3,7 @@ package com.samanatteu.dto.cotisation;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.StatutTirage;
+import com.samanatteu.enums.cotisation.StatutTirage;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

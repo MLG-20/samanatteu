@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.onboarding.InvitationDTO;
-import com.samanatteu.entity.Invitation;
+import com.samanatteu.entity.onboarding.Invitation;
 import com.samanatteu.service.onboarding.InvitationService;
 
 @RequestMapping("/invitation")

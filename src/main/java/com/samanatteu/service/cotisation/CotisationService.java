@@ -10,15 +10,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.samanatteu.dto.cotisation.CotisationDTO;
 import com.samanatteu.dto.cotisation.PaiementDTO;
-import com.samanatteu.entity.Cotisation;
-import com.samanatteu.entity.Cycle;
-import com.samanatteu.enums.RoleUtilisateur;
-import com.samanatteu.enums.StatutCotisation;
+import com.samanatteu.entity.cotisation.Cotisation;
+import com.samanatteu.entity.tontine.Cycle;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.cotisation.CotisationDejaPayeeException;
 import com.samanatteu.exception.cotisation.CotisationIntrouvableException;
 import com.samanatteu.exception.cotisation.MontantPayeSuperieurAuDuException;
-import com.samanatteu.repository.CotisationRepository;
-import com.samanatteu.repository.CycleRepository;
+import com.samanatteu.repository.cotisation.CotisationRepository;
+import com.samanatteu.repository.tontine.CycleRepository;
+import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
@@ -26,12 +28,14 @@ public class CotisationService {
     private final CycleRepository cycleRepository;
     private final CotisationRepository cotisationRepository;
     private final UtilisateurConnecte utilisateurConnecte;
+    private final TontineRepository tontineRepository;
 
     public CotisationService(CotisationRepository cotisationRepository, UtilisateurConnecte utilisateurConnecte,
-            CycleRepository cycleRepository) {
+            CycleRepository cycleRepository, TontineRepository tontineRepository) {
         this.cotisationRepository = cotisationRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.cycleRepository = cycleRepository;
+        this.tontineRepository = tontineRepository;
     }
 
     // Lecture filtrée par rôle (règle R6), comme listParticipation :
@@ -68,41 +72,70 @@ public class CotisationService {
             throw new CotisationDejaPayeeException();
         }
 
-        // On ne paie pas plus que ce qui reste dû (ex. dû 10 000, déjà payé
-        // 6 000 → reste 4 000 : un paiement de 5 000 est refusé, 400).
+        // On ne paie pas plus que ce qui reste dû. Un seul paiement couvre la
+        // part ET la caisse de prêts : le plafond est la somme des deux
+        // restes (ex. part 2 000 + caisse 500 → 2 500 max, 3 000 refusé 400).
+        // resteDuPart resservira pour le partage plus bas.
         // BigDecimal : subtract() pour « - », compareTo() pour comparer
         // (> 0 = plus grand). Jamais equals() : 10.0 et 10.00 seraient
         // « différents » pour equals, égaux pour compareTo.
-        BigDecimal resteDu = cotisation.getMontantDu().subtract(cotisation.getMontantPaye());
+        BigDecimal resteDuPart = cotisation.getMontantDu().subtract(cotisation.getMontantPaye());
+        BigDecimal resteDuCaisse = cotisation.getMontantCaisseDu().subtract(cotisation.getMontantCaissePaye());
+        BigDecimal resteDu = resteDuPart.add(resteDuCaisse);
+
         if (paiement.getMontant().compareTo(resteDu) > 0) {
             throw new MontantPayeSuperieurAuDuException(paiement.getMontant(), resteDu);
         }
 
+        // Partage du paiement, la PART est prioritaire : min() donne le plus
+        // petit des deux, donc la part prend tout jusqu'à être remplie, et
+        // le surplus va à la caisse (ex. 5 500 pour un reste de 5 000 →
+        // part 5 000, caisse 500 ; 3 000 → part 3 000, caisse 0).
+        // Pas de contrôle de débordement caisse : le plafond l'empêche déjà.
         // add() RENVOIE un nouveau BigDecimal (il ne modifie pas l'ancien) :
         // on le garde dans une variable, il sert aussi au choix du statut.
         // Date du paiement fixée par le serveur, pas par le client.
-        BigDecimal nouveauMontantPaye = cotisation.getMontantPaye().add(paiement.getMontant());
+        BigDecimal versePart = paiement.getMontant().min(resteDuPart);
+        BigDecimal verseCaisse = paiement.getMontant().subtract(versePart);
+        BigDecimal nouveauMontantPaye = cotisation.getMontantPaye().add(versePart);
+        cotisation.setMontantCaissePaye(cotisation.getMontantCaissePaye().add(verseCaisse));
         cotisation.setMontantPaye(nouveauMontantPaye);
         cotisation.setModePaiement(paiement.getModePaiement());
         cotisation.setReference(paiement.getReference());
         cotisation.setDatePaiement(LocalDateTime.now());
 
-        // Tout payé (compareTo == 0) → COMPLET. Sinon PARTIEL, SAUF si la
-        // cotisation était EN_RETARD : un paiement partiel n'efface pas le
-        // retard (utile pour les rappels, phase 6). « Plus que le dû » est
-        // impossible ici : refusé juste au-dessus.
-        if (nouveauMontantPaye.compareTo(cotisation.getMontantDu()) == 0) {
+        // COMPLET seulement si la part ET la caisse sont payées (&& : les deux
+        // vraies). Sinon un membre à 5 000 / 5 500 serait COMPLET et ne
+        // pourrait plus verser ses 500 (paiement sur COMPLET refusé, 409).
+        // Sinon PARTIEL, SAUF si la cotisation était EN_RETARD : un paiement
+        // partiel n'efface pas le retard (utile pour les rappels, phase 6).
+        // « Plus que le dû » est impossible ici : refusé juste au-dessus.
+        // getMontantCaissePaye() contient déjà le nouveau total (mis à jour
+        // lors du partage, plus haut).
+        boolean partComplete = nouveauMontantPaye.compareTo(cotisation.getMontantDu()) == 0;
+        boolean caisseComplete = cotisation.getMontantCaissePaye().compareTo(cotisation.getMontantCaisseDu()) == 0;
+        if (partComplete && caisseComplete) {
             cotisation.setStatut(StatutCotisation.COMPLET);
         } else if (cotisation.getStatut() != StatutCotisation.EN_RETARD) {
             cotisation.setStatut(StatutCotisation.PARTIEL);
         }
 
         // Le cycle encaisse seulement l'argent qui vient d'arriver (pas
-        // nouveauMontantPaye, qui recompterait les paiements précédents).
+        // nouveauMontantPaye, qui recompterait les paiements précédents),
+        // et seulement la PART (versePart) : montantCollecte est la cagnotte
+        // du tirage, l'argent de la caisse de prêts ne doit pas y entrer.
         // Deux save() : grâce à @Transactional, les deux réussissent ou aucun.
         Cycle cycle = cotisation.getCycle();
-        cycle.setMontantCollecte(cycle.getMontantCollecte().add(paiement.getMontant()));
+        cycle.setMontantCollecte(cycle.getMontantCollecte().add(versePart));
         cycleRepository.save(cycle);
+
+        // Le surplus (verseCaisse) crédite la caisse de prêts de la tontine
+        // (cotisation → cycle → tontine, pas de lien direct). Si verseCaisse
+        // vaut 0, add(0) ne change rien : pas besoin de if. @Transactional :
+        // cycle, tontine et cotisation sont enregistrés tous ou aucun.
+        Tontine tontine = cycle.getTontine();
+        tontine.setSoldeCaissePret(tontine.getSoldeCaissePret().add(verseCaisse));
+        tontineRepository.save(tontine);
 
         Cotisation enregistree = cotisationRepository.save(cotisation);
         return convertiCotisationDTO(enregistree);
@@ -125,6 +158,8 @@ public class CotisationService {
         dto.setCycleId(cotisation.getCycle().getId());
         dto.setMontantDu(cotisation.getMontantDu());
         dto.setMontantPaye(cotisation.getMontantPaye());
+        dto.setMontantCaisseDu(cotisation.getMontantCaisseDu());
+        dto.setMontantCaissePaye(cotisation.getMontantCaissePaye());
         dto.setDatePaiement(cotisation.getDatePaiement());
         dto.setModePaiement(cotisation.getModePaiement());
         dto.setReference(cotisation.getReference());

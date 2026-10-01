@@ -1,5 +1,6 @@
 package com.samanatteu.service.tontine;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -7,19 +8,19 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.tontine.TontineDTO;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.entity.Utilisateur;
-import com.samanatteu.enums.RoleUtilisateur;
-import com.samanatteu.enums.StatutParticipation;
-import com.samanatteu.enums.StatutTontine;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.tontine.StatutParticipation;
+import com.samanatteu.enums.tontine.StatutTontine;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.tontine.TontineNonModifiableException;
 import com.samanatteu.exception.tontine.TontineSansMembreException;
 import com.samanatteu.exception.tontine.TransitionStatutInvalideException;
-import com.samanatteu.repository.ParticipationRepository;
-import com.samanatteu.repository.TontineRepository;
-import com.samanatteu.repository.UtilisateurRepository;
+import com.samanatteu.repository.tontine.ParticipationRepository;
+import com.samanatteu.repository.tontine.TontineRepository;
+import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
@@ -61,6 +62,10 @@ public class TontineService {
         // des parts des membres, calculé par le serveur à l'activation.
         // Écrase ce que le client aurait envoyé dans le JSON.
         tontine.setNbCycles(0);
+        // Caisse de prêts vide au départ. Obligatoire : Hibernate écrit NULL
+        // si le champ est null (le DEFAULT 0 de la base ne joue pas), et
+        // écrase un solde que le client aurait glissé dans le JSON.
+        tontine.setSoldeCaissePret(BigDecimal.ZERO);
         Tontine enregistre = tontineRepository.save(tontine);
         return convertiTontineDTO(enregistre);
     }
@@ -74,6 +79,10 @@ public class TontineService {
             }
             tontineExsitant.setNom(tontineModifier.getNom());
             tontineExsitant.setMontantPart(tontineModifier.getMontantPart());
+            // montantCaissePret = une RÈGLE choisie par la gestionnaire :
+            // recopiée. soldeCaissePret = un ÉTAT calculé par le serveur :
+            // jamais recopié du JSON (sinon on prêterait de l'argent fictif).
+            tontineExsitant.setMontantCaissePret(tontineModifier.getMontantCaissePret());
             tontineExsitant.setFrequence(tontineModifier.getFrequence());
             tontineExsitant.setIntervalle(tontineModifier.getIntervalle());
             tontineExsitant.setDescription(tontineModifier.getDescription());
@@ -144,6 +153,8 @@ public class TontineService {
         dto.setId(tontine.getId());
         dto.setNom(tontine.getNom());
         dto.setMontantPart(tontine.getMontantPart());
+        dto.setMontantCaissePret(tontine.getMontantCaissePret());
+        dto.setSoldeCaissePret(tontine.getSoldeCaissePret());
         dto.setFrequence(tontine.getFrequence());
         dto.setIntervalle(tontine.getIntervalle());
         dto.setNbCycles(tontine.getNbCycles());

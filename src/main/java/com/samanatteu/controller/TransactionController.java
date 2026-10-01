@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.pret.TransactionDTO;
-import com.samanatteu.entity.Transaction;
+import com.samanatteu.entity.pret.Transaction;
 import com.samanatteu.service.pret.TransactionService;
 
 @RequestMapping("/transaction")

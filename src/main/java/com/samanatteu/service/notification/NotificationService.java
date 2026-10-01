@@ -6,10 +6,10 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.notification.NotificationDTO;
-import com.samanatteu.entity.Notification;
-import com.samanatteu.enums.StatutNotification;
+import com.samanatteu.entity.notification.Notification;
+import com.samanatteu.enums.notification.StatutNotification;
 import com.samanatteu.exception.notification.EnvoiNotificationEchoueException;
-import com.samanatteu.repository.NotificationRepository;
+import com.samanatteu.repository.notification.NotificationRepository;
 
 @Service 
 public class NotificationService {

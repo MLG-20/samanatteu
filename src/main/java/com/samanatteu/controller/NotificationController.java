@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.notification.NotificationDTO;
-import com.samanatteu.entity.Notification;
+import com.samanatteu.entity.notification.Notification;
 import com.samanatteu.service.notification.NotificationService;
 
 @RequestMapping("/notification")

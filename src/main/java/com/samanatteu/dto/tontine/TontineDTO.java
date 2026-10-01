@@ -3,8 +3,8 @@ package com.samanatteu.dto.tontine;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.FrequenceTontine;
-import com.samanatteu.enums.StatutTontine;
+import com.samanatteu.enums.tontine.FrequenceTontine;
+import com.samanatteu.enums.tontine.StatutTontine;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -20,6 +20,10 @@ public class TontineDTO {
     private String nom;
 
     private BigDecimal montantPart;
+
+    private BigDecimal montantCaissePret;
+
+    private BigDecimal soldeCaissePret;
 
     private FrequenceTontine frequence;
 

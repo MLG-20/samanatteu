@@ -3,8 +3,8 @@ package com.samanatteu.dto.cotisation;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.ModePaiementCotisation;
-import com.samanatteu.enums.StatutCotisation;
+import com.samanatteu.enums.cotisation.ModePaiementCotisation;
+import com.samanatteu.enums.cotisation.StatutCotisation;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -25,6 +25,10 @@ public class CotisationDTO {
     private BigDecimal montantDu;
 
     private BigDecimal montantPaye;
+
+    private BigDecimal montantCaisseDu;
+
+    private BigDecimal montantCaissePaye;
 
     private LocalDateTime datePaiement;
 

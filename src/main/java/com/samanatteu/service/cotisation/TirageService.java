@@ -13,26 +13,26 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.samanatteu.dto.cotisation.TirageDTO;
 import com.samanatteu.dto.cotisation.VersementDTO;
-import com.samanatteu.entity.Cotisation;
-import com.samanatteu.entity.Cycle;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tirage;
-import com.samanatteu.enums.RoleUtilisateur;
-import com.samanatteu.enums.StatutCotisation;
-import com.samanatteu.enums.StatutCycle;
-import com.samanatteu.enums.StatutParticipation;
-import com.samanatteu.enums.StatutTirage;
-import com.samanatteu.exception.tontine.CycleIntrouvableException;
-import com.samanatteu.exception.tontine.CycleNonClotureException;
+import com.samanatteu.entity.cotisation.Cotisation;
+import com.samanatteu.entity.cotisation.Tirage;
+import com.samanatteu.entity.tontine.Cycle;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.cotisation.StatutTirage;
+import com.samanatteu.enums.tontine.StatutCycle;
+import com.samanatteu.enums.tontine.StatutParticipation;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.cotisation.MontantVerseSuperieurAuDisponibleException;
 import com.samanatteu.exception.cotisation.TirageDejaExistantPourCeCycleException;
 import com.samanatteu.exception.cotisation.TirageIntrouvableException;
 import com.samanatteu.exception.cotisation.TirageNonReportableException;
 import com.samanatteu.exception.cotisation.UrneVideException;
-import com.samanatteu.repository.CotisationRepository;
-import com.samanatteu.repository.CycleRepository;
-import com.samanatteu.repository.ParticipationRepository;
-import com.samanatteu.repository.TirageRepository;
+import com.samanatteu.exception.tontine.CycleIntrouvableException;
+import com.samanatteu.exception.tontine.CycleNonClotureException;
+import com.samanatteu.repository.cotisation.CotisationRepository;
+import com.samanatteu.repository.cotisation.TirageRepository;
+import com.samanatteu.repository.tontine.CycleRepository;
+import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
@@ -146,11 +146,20 @@ public class TirageService {
             BigDecimal resteDu = cotisation.getMontantDu().subtract(cotisation.getMontantPaye());
 
             cotisation.setMontantPaye(cotisation.getMontantDu());
-            cotisation.setStatut(StatutCotisation.COMPLET);
+
+            // Le gain n'efface que la dette de PART : la caisse de prêts est
+            // à part, jamais compensée. COMPLET seulement si la caisse est
+            // déjà payée ; sinon il reste EN_RETARD (pas de else) et ses 500
+            // restent payables : enregistrerPaiement les mettra en caisse.
+            if (cotisation.getMontantCaissePaye().compareTo(cotisation.getMontantCaisseDu()) == 0) {
+                cotisation.setStatut(StatutCotisation.COMPLET);
+            }
+
             cotisationRepository.save(cotisation);
 
             // BigDecimal est immuable : add() renvoie un NOUVEL objet, d'où
-            // le set. Après ça, la caisse du cycle = ce que reçoit le gagnant.
+            // le set. Après ça, la cagnotte du cycle (montantCollecte, à ne
+            // pas confondre avec la caisse de prêts) = ce que reçoit le gagnant.
             cycle.setMontantCollecte(cycle.getMontantCollecte().add(resteDu));
             cycleRepository.save(cycle);
         }

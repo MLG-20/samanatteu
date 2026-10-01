@@ -3,9 +3,12 @@ package com.samanatteu.controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.samanatteu.dto.pret.DemandePretDTO;
+import com.samanatteu.dto.pret.PretDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
-import com.samanatteu.entity.Tontine;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.service.pret.PretService;
 import com.samanatteu.service.tontine.CycleService;
 import com.samanatteu.service.tontine.TontineService;
 
@@ -27,10 +30,13 @@ public class TontineController {
 
     private final TontineService tontineService;
     private final CycleService cycleService;
+    private final PretService pretService;
 
-    public TontineController(TontineService tontineService, CycleService cycleService) {
+    public TontineController(TontineService tontineService, CycleService cycleService,
+            PretService pretService) {
         this.tontineService = tontineService;
         this.cycleService = cycleService;
+        this.pretService = pretService;
     }
 
     @GetMapping
@@ -79,8 +85,16 @@ public class TontineController {
         return cycleService.ouvrirCycle(id);
     }
 
+    // Accorde un prêt sur la caisse de la tontine. @Valid : sans lui, aucune
+    // règle de DemandePretDTO n'est vérifiée. Sécurité : POST /tontine/**.
+    @PostMapping("/{id}/prets")
+    public PretDTO accorderPret(@PathVariable Long id, @Valid @RequestBody DemandePretDTO demande) {
+        return pretService.accorderPret(id, demande);
+    }
+
     @PutMapping("/{id}")
-    public ResponseEntity<TontineDTO> updateTontine(@PathVariable Long id, @Valid @RequestBody Tontine TontineModifier) {
+    public ResponseEntity<TontineDTO> updateTontine(@PathVariable Long id,
+            @Valid @RequestBody Tontine TontineModifier) {
         return tontineService.updateTontine(id, TontineModifier)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

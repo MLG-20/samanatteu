@@ -1,6 +1,6 @@
 package com.samanatteu.dto.tontine;
 
-import com.samanatteu.enums.StatutParticipation;
+import com.samanatteu.enums.tontine.StatutParticipation;
 import java.sql.Date;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

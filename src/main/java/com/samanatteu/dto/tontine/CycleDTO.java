@@ -3,7 +3,7 @@ package com.samanatteu.dto.tontine;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import com.samanatteu.enums.StatutCycle;
+import com.samanatteu.enums.tontine.StatutCycle;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

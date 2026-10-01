@@ -2,7 +2,7 @@ package com.samanatteu.dto.notification;
 
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.StatutNotification;
+import com.samanatteu.enums.notification.StatutNotification;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

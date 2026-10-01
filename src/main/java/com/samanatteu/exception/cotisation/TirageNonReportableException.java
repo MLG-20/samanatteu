@@ -2,7 +2,7 @@ package com.samanatteu.exception.cotisation;
 
 import org.springframework.http.HttpStatus;
 
-import com.samanatteu.enums.StatutTirage;
+import com.samanatteu.enums.cotisation.StatutTirage;
 import com.samanatteu.exception.SamanatteuException;
 
 public class TirageNonReportableException extends SamanatteuException {

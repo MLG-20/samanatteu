@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.StatutEcheancePret;
+import com.samanatteu.enums.pret.StatutEcheancePret;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

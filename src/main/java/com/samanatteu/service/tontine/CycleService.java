@@ -10,25 +10,25 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.samanatteu.dto.tontine.CycleDTO;
-import com.samanatteu.entity.Cotisation;
-import com.samanatteu.entity.Cycle;
-import com.samanatteu.entity.Participation;
-import com.samanatteu.entity.Tontine;
-import com.samanatteu.enums.RoleUtilisateur;
-import com.samanatteu.enums.StatutCotisation;
-import com.samanatteu.enums.StatutCycle;
-import com.samanatteu.enums.StatutParticipation;
-import com.samanatteu.enums.StatutTontine;
+import com.samanatteu.entity.cotisation.Cotisation;
+import com.samanatteu.entity.tontine.Cycle;
+import com.samanatteu.entity.tontine.Participation;
+import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.tontine.StatutCycle;
+import com.samanatteu.enums.tontine.StatutParticipation;
+import com.samanatteu.enums.tontine.StatutTontine;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.tontine.CycleDejaEnCoursException;
 import com.samanatteu.exception.tontine.CycleIntrouvableException;
 import com.samanatteu.exception.tontine.CycleNonEnCoursException;
 import com.samanatteu.exception.tontine.NombreCyclesAtteintException;
 import com.samanatteu.exception.tontine.TontineIntrouvableException;
 import com.samanatteu.exception.tontine.TontineNonActiveException;
-import com.samanatteu.repository.CotisationRepository;
-import com.samanatteu.repository.CycleRepository;
-import com.samanatteu.repository.ParticipationRepository;
-import com.samanatteu.repository.TontineRepository;
+import com.samanatteu.repository.cotisation.CotisationRepository;
+import com.samanatteu.repository.tontine.CycleRepository;
+import com.samanatteu.repository.tontine.ParticipationRepository;
+import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
 @Service
@@ -169,6 +169,12 @@ public class CycleService {
             cotisation.setMontantDu(montantDu);
             montantAttendu = montantAttendu.add(montantDu);
             cotisation.setMontantPaye(BigDecimal.ZERO);
+            // Caisse de prêts : montant FIXE par membre (pas de multiply par
+            // les parts), copié pour garder la trace de ce cycle. Rien de
+            // versé au départ (ZERO, jamais null : NOT NULL + add() plus tard).
+            // Pas ajouté à montantAttendu : ce total est la cagnotte du tirage.
+            cotisation.setMontantCaisseDu(tontine.getMontantCaissePret());
+            cotisation.setMontantCaissePaye(BigDecimal.ZERO);
             cotisation.setStatut(StatutCotisation.EN_ATTENTE);
             cotisation.setCreatedAt(LocalDateTime.now());
             cotisationRepository.save(cotisation);

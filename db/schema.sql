@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict o1PaO0z2KfSHaXd3J63k7vD2oqr9qUDUfVG8P8uzrDz2yihtS6Zx4IlNCa9h3MO
+\restrict XnzER19dHLZSUoQ7Ok6OcEllsNA40p9CXdsDT2BNGsrLp7dGxARgD4BJv6mmiH0
 
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -36,7 +36,11 @@ CREATE TABLE public.cotisation (
     mode_paiement character varying(20),
     reference character varying(100),
     statut character varying(20),
-    created_at timestamp without time zone
+    created_at timestamp without time zone,
+    montant_caisse_du numeric(10,2) DEFAULT 0 NOT NULL,
+    montant_caisse_paye numeric(10,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT cotisation_montant_caisse_du_check CHECK ((montant_caisse_du >= (0)::numeric)),
+    CONSTRAINT cotisation_montant_caisse_paye_check CHECK ((montant_caisse_paye >= (0)::numeric))
 );
 
 
@@ -288,7 +292,10 @@ CREATE TABLE public.pret (
     nb_echeances integer,
     date_accord date,
     statut character varying(20),
-    created_at timestamp without time zone
+    created_at timestamp without time zone,
+    montant_interet numeric(15,2) DEFAULT 0 NOT NULL,
+    date_debut_remb date,
+    CONSTRAINT pret_montant_interet_check CHECK ((montant_interet >= (0)::numeric))
 );
 
 
@@ -363,7 +370,11 @@ CREATE TABLE public.tontine (
     updated_at timestamp without time zone,
     statut character varying(20),
     gestionnaire_id bigint,
-    intervalle integer DEFAULT 1 NOT NULL
+    intervalle integer DEFAULT 1 NOT NULL,
+    montant_caisse_pret numeric(10,2) DEFAULT 0 NOT NULL,
+    solde_caisse_pret numeric(12,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT tontine_montant_caisse_pret_check CHECK ((montant_caisse_pret >= (0)::numeric)),
+    CONSTRAINT tontine_solde_caisse_pret_check CHECK ((solde_caisse_pret >= (0)::numeric))
 );
 
 
@@ -796,5 +807,5 @@ ALTER TABLE ONLY public.transaction
 -- PostgreSQL database dump complete
 --
 
-\unrestrict o1PaO0z2KfSHaXd3J63k7vD2oqr9qUDUfVG8P8uzrDz2yihtS6Zx4IlNCa9h3MO
+\unrestrict XnzER19dHLZSUoQ7Ok6OcEllsNA40p9CXdsDT2BNGsrLp7dGxARgD4BJv6mmiH0
 

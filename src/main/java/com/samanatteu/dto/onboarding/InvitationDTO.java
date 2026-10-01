@@ -2,7 +2,7 @@ package com.samanatteu.dto.onboarding;
 
 import java.time.LocalDateTime;
 
-import com.samanatteu.enums.StatutInvitation;
+import com.samanatteu.enums.onboarding.StatutInvitation;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

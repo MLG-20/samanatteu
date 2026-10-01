@@ -4,7 +4,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.tontine.ParticipationDTO;
-import com.samanatteu.entity.Participation;
+import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.service.tontine.ParticipationService;
 
 import java.util.List;
