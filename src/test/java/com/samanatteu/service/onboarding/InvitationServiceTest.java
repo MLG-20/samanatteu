@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -52,6 +53,7 @@ import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.notification.NotificationService;
 
 // Tests des règles d'InvitationService avec de faux repositories (Mockito).
 // Convention : la tontine 6 appartient au gestionnaire 770000101 ; 770000102 est un
@@ -67,6 +69,10 @@ class InvitationServiceTest {
     private ParticipationRepository participationRepository;
     @Mock
     private UtilisateurRepository utilisateurRepository;
+    // Les envois (SMS/email) sont vérifiés par NotificationServiceTest ; ici on
+    // vérifie seulement que le service métier les DÉCLENCHE.
+    @Mock
+    private NotificationService notificationService;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -419,5 +425,35 @@ class InvitationServiceTest {
 
         assertEquals(1, invitationService.listInvitation().size());
         verify(invitationRepository, never()).findAll();
+    }
+
+    // ---------------------------------------------------------- notifications
+
+    // Arrivée par un lien : même SMS de bienvenue que l'inscription par la gestionnaire.
+    @Test
+    void rejoindre_envoieLaBienvenueAvecLaParticipationCreee() {
+        connecter("771234566", "ROLE_MEMBRE");
+        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation(TypeInvitation.GROUPE)));
+        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre30()));
+
+        invitationService.rejoindre("jeton");
+
+        ArgumentCaptor<Participation> capture = ArgumentCaptor.forClass(Participation.class);
+        verify(participationRepository).save(capture.capture());
+        verify(notificationService).notifierBienvenue(capture.getValue());
+    }
+
+    @Test
+    void rejoindre_refuse_nEnvoieAucuneNotification() {
+        connecter("779999999", "ROLE_MEMBRE");
+        Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
+        invitation.setTelephone("771234566");
+        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
+        Utilisateur intrus = new Utilisateur();
+        intrus.setTelephone("779999999");
+        when(utilisateurRepository.findByTelephone("779999999")).thenReturn(Optional.of(intrus));
+
+        assertThrows(AccesRefuseException.class, () -> invitationService.rejoindre("jeton"));
+        verifyNoInteractions(notificationService);
     }
 }

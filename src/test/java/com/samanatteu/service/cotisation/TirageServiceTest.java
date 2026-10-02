@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -31,6 +32,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.ArgumentCaptor;
 
 import com.samanatteu.dto.cotisation.TirageDTO;
 import com.samanatteu.dto.cotisation.VersementDTO;
@@ -59,6 +61,8 @@ import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 import com.samanatteu.service.pret.TransactionService;
+import com.samanatteu.service.notification.NotificationService;
+import com.samanatteu.enums.notification.TypeNotification;
 
 // Tests des règles de TirageService (tirage au sort, compensation, versement,
 // report, lecture filtrée), avec de faux repositories.
@@ -80,6 +84,10 @@ class TirageServiceTest {
     @Mock
     private TransactionService transactionService;
     // Un vrai objet : il lit le SecurityContextHolder rempli par connecter().
+    // Les envois (SMS/email) sont vérifiés par NotificationServiceTest ; ici on
+    // vérifie seulement que le service métier les DÉCLENCHE.
+    @Mock
+    private NotificationService notificationService;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -668,5 +676,36 @@ class TirageServiceTest {
 
         assertEquals(1, resultat.size());
         verify(tirageRepository, never()).findByCycleTontineGestionnaireTelephone(any());
+    }
+
+    // ---------------------------------------------------------- notifications
+
+    // Le gagnant est prévenu : montant gagné ET déjà remis.
+    @Test
+    void tirer_previentLeGagnant() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Participation gagnant = membre(1L, 1);
+        Cycle cycle = cycle(StatutCycle.CLOTURE, "30000");
+        cycle.getTontine().setNom("Natt des femmes");
+        cycleClotureAvecMembres(cycle, gagnant);
+        saveDuTirageRenvoieLeTirage();
+
+        tirageService.tirerAuSort(5L);
+
+        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
+        verify(notificationService).notifier(eq(gagnant.getMembre()), eq(TypeNotification.RESULTAT_TIRAGE),
+                message.capture());
+        assertTrue(message.getValue().startsWith("Natt des femmes : félicitations"));
+        assertTrue(message.getValue().contains("40000 F"));
+        assertTrue(message.getValue().contains("Déjà remis : 30000 F"));
+    }
+
+    @Test
+    void tirer_refuse_nEnvoieAucuneNotification() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        when(cycleRepository.findById(5L)).thenReturn(Optional.of(cycle(StatutCycle.EN_COURS, "0")));
+
+        assertThrows(CycleNonClotureException.class, () -> tirageService.tirerAuSort(5L));
+        verifyNoInteractions(notificationService);
     }
 }

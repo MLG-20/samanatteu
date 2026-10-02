@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +45,7 @@ import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.notification.NotificationService;
 
 // Tests des règles de ParticipationService, avec de faux repositories (Mockito) : ni base ni serveur.
 // Convention des données : le gestionnaire propriétaire de la tontine 6 a le téléphone 770000101 ;
@@ -59,6 +61,10 @@ class ParticipationServiceTest {
     @Mock
     private UtilisateurRepository utilisateurRepository;
     // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
+    // Les envois (SMS/email) sont vérifiés par NotificationServiceTest ; ici on
+    // vérifie seulement que le service métier les DÉCLENCHE.
+    @Mock
+    private NotificationService notificationService;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -435,5 +441,36 @@ class ParticipationServiceTest {
         assertEquals(1, resultat.size());
         verify(participationRepository, never()).findAll();
         verify(participationRepository, never()).findByTontineGestionnaireTelephone(any());
+    }
+
+    // ---------------------------------------------------------- notifications
+
+    // SMS de bienvenue au membre inscrit, avec la participation ENREGISTRÉE.
+    @Test
+    void createParticipation_envoieLaBienvenue() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineDe770000101(StatutTontine.EN_ATTENTE)));
+        when(utilisateurRepository.findById(30L)).thenReturn(Optional.of(membre30()));
+        Participation enregistree = new Participation();
+        enregistree.setId(9L);
+        enregistree.setMembre(membre30());
+        enregistree.setTontine(tontineDe770000101(StatutTontine.EN_ATTENTE));
+        when(participationRepository.save(any())).thenReturn(enregistree);
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+
+        participationService.createParticipation(demande(2));
+
+        verify(notificationService).notifierBienvenue(enregistree);
+    }
+
+    @Test
+    void createParticipation_refusee_nEnvoieAucuneNotification() {
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineDe770000101(StatutTontine.EN_ATTENTE)));
+        when(utilisateurRepository.findById(30L)).thenReturn(Optional.of(membre30()));
+        when(participationRepository.existsByMembreIdAndTontineId(30L, 6L)).thenReturn(true);
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+
+        assertThrows(ParticipationDejaExistanteException.class,
+                () -> participationService.createParticipation(demande(2)));
+        verifyNoInteractions(notificationService);
     }
 }

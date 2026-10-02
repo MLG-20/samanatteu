@@ -10,10 +10,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.mockito.ArgumentCaptor;
 
 import com.samanatteu.dto.cotisation.CotisationDTO;
 import com.samanatteu.dto.cotisation.PaiementDTO;
@@ -45,6 +49,9 @@ import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 import com.samanatteu.service.pret.TransactionService;
+import com.samanatteu.service.notification.NotificationService;
+import com.samanatteu.enums.notification.TypeNotification;
+import com.samanatteu.enums.tontine.StatutCycle;
 
 // Tests des règles de CotisationService (paiement, lecture filtrée), avec de faux repositories.
 // Convention : la cotisation 7 (dû 10 000 F) appartient au cycle 41 de la tontine 6, gérée par
@@ -61,6 +68,10 @@ class CotisationServiceTest {
     // Faux journal : on vérifie seulement QUE et COMMENT il est appelé.
     @Mock
     private TransactionService transactionService;
+    // Les envois (SMS/email) sont vérifiés par NotificationServiceTest ; ici on
+    // vérifie seulement que le service métier les DÉCLENCHE.
+    @Mock
+    private NotificationService notificationService;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -367,5 +378,76 @@ class CotisationServiceTest {
 
         assertThrows(AccesRefuseException.class, () -> cotisationService.deleteCotisation(7L));
         verify(cotisationRepository, never()).deleteById(any());
+    }
+
+    // ---------------------------------------------------------- notifications
+
+    // Confirmation envoyée AU MEMBRE, avec le nom de la tontine, son nom et le reste à payer.
+    @Test
+    void payer_envoieLaConfirmationAuMembre() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        Cotisation c = cotisation("0", StatutCotisation.EN_ATTENTE, "0");
+        c.getCycle().getTontine().setNom("Natt des femmes");
+        c.getCycle().setNumeroCycle(2);
+        Utilisateur membre = c.getParticipation().getMembre();
+        membre.setPrenom("Awa");
+        membre.setNom("Diop");
+
+        payer(c, "3000");
+
+        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
+        verify(notificationService).notifier(eq(membre), eq(TypeNotification.PAIEMENT_CONFIRME),
+                message.capture());
+        assertTrue(message.getValue().startsWith("Natt des femmes : Awa Diop"));
+        assertTrue(message.getValue().contains("paiement de 3000 F"));
+        // Dû stocké « 10000.00 » : affiché sans centimes (pas de « 7000.00 » en FCFA).
+        assertTrue(message.getValue().contains("Reste à payer : 7000 F."));
+    }
+
+    // Paiement refusé : aucun SMS pour un paiement qui n'a pas eu lieu.
+    @Test
+    void payer_refuse_nEnvoieAucuneNotification() {
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+        when(cotisationRepository.findById(7L))
+                .thenReturn(Optional.of(cotisation("6000", StatutCotisation.PARTIEL, "6000")));
+
+        assertThrows(MontantPayeSuperieurAuDuException.class,
+                () -> cotisationService.enregistrerPaiement(7L, paiement("5000")));
+        verifyNoInteractions(notificationService);
+    }
+
+    // Rappel J-3 : cotisations EN_ATTENTE ou PARTIEL d'un cycle EN_COURS qui finit dans 3 jours.
+    @Test
+    void rappel_chercheLesCotisationsNonSoldeesDesCyclesQuiFinissentDans3Jours() {
+        when(cotisationRepository.findByStatutInAndCycleStatutAndCycleDateFinPrevue(
+                List.of(StatutCotisation.EN_ATTENTE, StatutCotisation.PARTIEL), StatutCycle.EN_COURS,
+                LocalDate.now().plusDays(3))).thenReturn(List.of());
+
+        cotisationService.rappelerCotisations();
+
+        verify(cotisationRepository).findByStatutInAndCycleStatutAndCycleDateFinPrevue(
+                List.of(StatutCotisation.EN_ATTENTE, StatutCotisation.PARTIEL), StatutCycle.EN_COURS,
+                LocalDate.now().plusDays(3));
+        verifyNoInteractions(notificationService);
+    }
+
+    // Le reste rappelé = part ET caisse de prêts ; date au format jj/mm/aaaa.
+    @Test
+    void rappel_annonceLeResteDeLaPartEtDeLaCaisseEtLaDateLimite() {
+        Cotisation c = cotisation("4000", StatutCotisation.PARTIEL, "4000");
+        c.setMontantCaisseDu(new BigDecimal("500"));
+        LocalDate fin = LocalDate.now().plusDays(3);
+        c.getCycle().setDateFinPrevue(fin);
+        when(cotisationRepository.findByStatutInAndCycleStatutAndCycleDateFinPrevue(any(), any(), any()))
+                .thenReturn(List.of(c));
+
+        cotisationService.rappelerCotisations();
+
+        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
+        verify(notificationService).notifier(eq(c.getParticipation().getMembre()),
+                eq(TypeNotification.RAPPEL_COTISATION), message.capture());
+        // 10 000 - 4 000 de part + 500 de caisse = 6 500
+        assertTrue(message.getValue().contains("6500"));
+        assertTrue(message.getValue().contains(fin.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))));
     }
 }
