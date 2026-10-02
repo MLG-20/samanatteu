@@ -1,10 +1,13 @@
 package com.samanatteu.service.cotisation;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,8 +16,11 @@ import com.samanatteu.dto.cotisation.PaiementDTO;
 import com.samanatteu.entity.cotisation.Cotisation;
 import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.cotisation.StatutCotisation;
+import com.samanatteu.enums.notification.TypeNotification;
 import com.samanatteu.enums.pret.TypeTransaction;
+import com.samanatteu.enums.tontine.StatutCycle;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.cotisation.CotisationDejaPayeeException;
 import com.samanatteu.exception.cotisation.CotisationIntrouvableException;
@@ -23,6 +29,7 @@ import com.samanatteu.repository.cotisation.CotisationRepository;
 import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.notification.NotificationService;
 import com.samanatteu.service.pret.TransactionService;
 
 @Service
@@ -32,15 +39,19 @@ public class CotisationService {
     private final UtilisateurConnecte utilisateurConnecte;
     private final TontineRepository tontineRepository;
     private final TransactionService transactionService;
+    private final NotificationService notificationService;
+    // 05/10/2026 plutôt que 2026-10-05 : lisible pour les membres.
+    private static final DateTimeFormatter FORMAT_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     public CotisationService(CotisationRepository cotisationRepository, UtilisateurConnecte utilisateurConnecte,
             CycleRepository cycleRepository, TontineRepository tontineRepository,
-            TransactionService transactionsService) {
+            TransactionService transactionsService, NotificationService notificationService) {
         this.cotisationRepository = cotisationRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.cycleRepository = cycleRepository;
         this.tontineRepository = tontineRepository;
         this.transactionService = transactionsService;
+        this.notificationService = notificationService;
     }
 
     // Lecture filtrée par rôle (règle R6), comme listParticipation :
@@ -149,7 +160,41 @@ public class CotisationService {
                 paiement.getReference(), cotisation.getId(), null);
 
         Cotisation enregistree = cotisationRepository.save(cotisation);
+
+        // Confirmation au membre (CDC §3.8), en dernier : un paiement refusé plus
+        // haut n'envoie rien. stripTrailingZeros : « 10000 » et non
+        // « 10000.00 » (pas de centimes en FCFA) ; toPlainString : jamais « 1E+4 ».
+        BigDecimal resteAPayer = resteDu.subtract(paiement.getMontant());
+        notificationService.notifier(cotisation.getParticipation().getMembre(),
+                TypeNotification.PAIEMENT_CONFIRME,
+                tontine.getNom() + " : " + cotisation.getParticipation().getMembre().getPrenom()
+                        + " " + cotisation.getParticipation().getMembre().getNom()
+                        + ", paiement de " + paiement.getMontant().stripTrailingZeros().toPlainString()
+                        + " F reçu (cycle " + cycle.getNumeroCycle() + "). Reste à payer : "
+                        + resteAPayer.stripTrailingZeros().toPlainString() + " F.");
+
         return convertiCotisationDTO(enregistree);
+    }
+
+    // Rappel J-3 avant la fin prévue du cycle (date limite), chaque jour à 9h.
+    // EN_RETARD exclu : il n'existe qu'après la clôture, la date est passée.
+    // Reste = part + caisse : le membre paie les deux en un seul versement.
+    @Scheduled(cron  = "0 0 9 * * *")
+    public void rappelerCotisations() {
+        List<Cotisation> aPayer = cotisationRepository.findByStatutInAndCycleStatutAndCycleDateFinPrevue(
+                List.of(StatutCotisation.EN_ATTENTE, StatutCotisation.PARTIEL),
+                StatutCycle.EN_COURS, LocalDate.now().plusDays(3));
+        for (Cotisation cotisation : aPayer) {
+            Cycle cycle = cotisation.getCycle();
+            Utilisateur membre = cotisation.getParticipation().getMembre();
+            BigDecimal reste = cotisation.getMontantDu().subtract(cotisation.getMontantPaye())
+                    .add(cotisation.getMontantCaisseDu().subtract(cotisation.getMontantCaissePaye()));
+            notificationService.notifier(membre, TypeNotification.RAPPEL_COTISATION,
+                    cycle.getTontine().getNom() + " : " + membre.getPrenom() + " " + membre.getNom()
+                            + ", rappel : cotisation de " + reste.stripTrailingZeros().toPlainString() + " F (cycle "
+                            + cycle.getNumeroCycle() + ") à payer avant le "
+                            + cycle.getDateFinPrevue().format(FORMAT_DATE) + ".");
+        }
     }
 
     public boolean deleteCotisation(Long id) {

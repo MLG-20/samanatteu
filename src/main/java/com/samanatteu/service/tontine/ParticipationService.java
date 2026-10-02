@@ -24,6 +24,7 @@ import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.notification.NotificationService;
 
 @Service
 public class ParticipationService {
@@ -31,14 +32,16 @@ public class ParticipationService {
     private final TontineRepository tontineRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final UtilisateurConnecte utilisateurConnecte;
+    private final NotificationService notificationService;
 
     public ParticipationService(ParticipationRepository participationRepository,
             TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository,
-            UtilisateurConnecte utilisateurConnecte) {
+            UtilisateurConnecte utilisateurConnecte, NotificationService notificationService) {
         this.participationRepository = participationRepository;
         this.tontineRepository = tontineRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.utilisateurConnecte = utilisateurConnecte;
+        this.notificationService = notificationService;
     }
 
     public List<ParticipationDTO> listParticipation() {
@@ -90,6 +93,8 @@ public class ParticipationService {
         participation.setTontine(tontine);
         participation.setMembre(membre);
         Participation enregistree = participationRepository.save(participation);
+        // SMS de bienvenue (CDC §3.8), après le save : rien n'est envoyé si l'inscription échoue.
+        notificationService.notifierBienvenue(enregistree);
         return convertiParticipationDTO(enregistree);
     }
 

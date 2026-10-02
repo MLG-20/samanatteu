@@ -19,6 +19,7 @@ import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.enums.cotisation.StatutCotisation;
 import com.samanatteu.enums.cotisation.StatutTirage;
+import com.samanatteu.enums.notification.TypeNotification;
 import com.samanatteu.enums.pret.TypeTransaction;
 import com.samanatteu.enums.tontine.StatutCycle;
 import com.samanatteu.enums.tontine.StatutParticipation;
@@ -35,6 +36,7 @@ import com.samanatteu.repository.cotisation.TirageRepository;
 import com.samanatteu.repository.tontine.CycleRepository;
 import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.notification.NotificationService;
 import com.samanatteu.service.pret.TransactionService;
 
 @Service
@@ -45,6 +47,7 @@ public class TirageService {
     private final ParticipationRepository participationRepository;
     private final CotisationRepository cotisationRepository;
     private final TransactionService transactionService;
+    private final NotificationService notificationService;
     // SecureRandom (imprévisible) et non Random (prévisible) : un tirage
     // d'argent ne doit pas pouvoir être deviné (CDC US-G05, transparence).
     // Déclaré en Random : SecureRandom en hérite (polymorphisme).
@@ -52,13 +55,15 @@ public class TirageService {
 
     public TirageService(TirageRepository tirageRepository, CycleRepository cycleRepository,
             UtilisateurConnecte utilisateurConnecte, ParticipationRepository participationRepository,
-            CotisationRepository cotisationRepository, TransactionService transactionService) {
+            CotisationRepository cotisationRepository, TransactionService transactionService,
+            NotificationService notificationService) {
         this.tirageRepository = tirageRepository;
         this.cycleRepository = cycleRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.participationRepository = participationRepository;
         this.cotisationRepository = cotisationRepository;
         this.transactionService = transactionService;
+        this.notificationService = notificationService;
     }
 
     // Lecture filtrée : le gestionnaire voit les tirages de SES tontines,
@@ -215,8 +220,15 @@ public class TirageService {
                     montantVerse, null, null, enregistre.getId(), null);
         }
 
-        return convertiTirageDTO(enregistre);
+        // Résultat au gagnant (CDC §3.8) : gain total ET déjà remis, car les
+        // retards des autres peuvent lui être reversés plus tard.
+        notificationService.notifier(gagnant.getMembre(), TypeNotification.RESULTAT_TIRAGE,
+                cycle.getTontine().getNom() + " : félicitations " + gagnant.getMembre().getPrenom()
+                        + " " + gagnant.getMembre().getNom() + " ! Vous avez gagné le tirage du cycle "
+                        + cycle.getNumeroCycle() + " : " + montantGagne.stripTrailingZeros().toPlainString()
+                        + " F. Déjà remis : " + montantVerse.stripTrailingZeros().toPlainString() + " F.");
 
+        return convertiTirageDTO(enregistre);
     }
 
     // Enregistre une remise d'argent au gagnant, quand elle a RÉELLEMENT

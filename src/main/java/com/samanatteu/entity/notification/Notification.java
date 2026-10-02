@@ -3,7 +3,9 @@ package com.samanatteu.entity.notification;
 import java.time.LocalDateTime;
 
 import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.notification.CanalNotification;
 import com.samanatteu.enums.notification.StatutNotification;
+import com.samanatteu.enums.notification.TypeNotification;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -39,8 +41,15 @@ public class Notification {
     @Column(name = "message")
     private String message;
 
+    // Enum depuis V4 (était un String libre).
+    @Enumerated(EnumType.STRING)
     @Column(name = "type")
-    private String type;
+    private TypeNotification type;
+
+    // Une ligne par canal : un SMS et un email pour le même événement = 2 lignes.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "canal")
+    private CanalNotification canal;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "statut")

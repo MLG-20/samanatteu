@@ -34,6 +34,7 @@ import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.notification.NotificationService;
 
 @Service
 public class InvitationService {
@@ -42,18 +43,20 @@ public class InvitationService {
     private final UtilisateurConnecte utilisateurConnecte;
     private final ParticipationRepository participationRepository;
     private final UtilisateurRepository utilisateurRepository;
+    private final NotificationService notificationService;
     // SecureRandom et pas Random : un token d'invitation donne accès à une
     // tontine, il ne doit pas pouvoir être prédit (même raison que le tirage).
     private final SecureRandom hasard = new SecureRandom();
 
     public InvitationService(InvitationRepository invitationRepository, TontineRepository tontineRepository,
             UtilisateurConnecte utilisateurConnect, ParticipationRepository participationRepository,
-            UtilisateurRepository utilisateurRepository) {
+            UtilisateurRepository utilisateurRepository, NotificationService notificationService) {
         this.invitationRepository = invitationRepository;
         this.tontineRepository = tontineRepository;
         this.utilisateurConnecte = utilisateurConnect;
         this.participationRepository = participationRepository;
         this.utilisateurRepository = utilisateurRepository;
+        this.notificationService = notificationService;
 
     }
 
@@ -191,6 +194,8 @@ public class InvitationService {
                 .map(derniere -> derniere.getOrdreInscription() + 1)
                 .orElse(1));
         participationRepository.save(participation);
+        // Même message de bienvenue que l'inscription par la gestionnaire.
+        notificationService.notifierBienvenue(participation);
 
         // Usage unique pour l'individuelle ; le lien de groupe reste valable pour les autres.
         if (invitation.getType() == TypeInvitation.INDIVIDUELLE) {

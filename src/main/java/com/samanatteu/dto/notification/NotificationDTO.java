@@ -2,7 +2,9 @@ package com.samanatteu.dto.notification;
 
 import java.time.LocalDateTime;
 
+import com.samanatteu.enums.notification.CanalNotification;
 import com.samanatteu.enums.notification.StatutNotification;
+import com.samanatteu.enums.notification.TypeNotification;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,7 +24,9 @@ public class NotificationDTO {
 
     private String message;
 
-    private String type;
+    private TypeNotification type;
+
+    private CanalNotification canal;
 
     private StatutNotification statut;
 

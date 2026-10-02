@@ -21,4 +21,8 @@ public interface EcheancePretRepository extends JpaRepository<EcheancePret, Long
     List<EcheancePret> findByStatutAndDateEcheanceBefore(StatutEcheancePret statut, LocalDate date);
 
     boolean existsByPretIdAndStatut(Long pretId, StatutEcheancePret statut);
+
+    // Échéances qui tombent exactement à cette date (rappel J-3).
+    List<EcheancePret> findByStatutAndDateEcheance(StatutEcheancePret statut, LocalDate date);
+
 }
