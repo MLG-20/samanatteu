@@ -5,8 +5,8 @@ Spring Boot. Un gestionnaire crée une tontine, y inscrit des membres, et l'appl
 cycles, les cotisations, les tirages et les prêts.
 
 > **État du projet : en développement actif.** Authentification, tontines, participations,
-> cycles et cotisations, tirages, caisse de prêts, prêts et journal financier sont fonctionnels et testés ;
-> notifications, invitations, import et tableaux de bord restent à faire. Voir
+> cycles et cotisations, tirages, caisse de prêts, prêts, journal financier et invitations sont
+> fonctionnels et testés ; notifications, import et tableaux de bord restent à faire. Voir
 > [Avancement](#avancement).
 
 ## Sommaire
@@ -305,9 +305,46 @@ Chaque ligne porte : membre, tontine, type, sens, montant (toujours positif, c'e
 donne la direction), mode de paiement et référence externe (Wave, Orange Money…) quand ils sont
 connus, `referenceId` (id de la cotisation, du tirage ou du prêt concerné), description, date.
 
+### Invitations (implémenté, testé)
+
+Deux façons de faire entrer des membres dans une tontine **encore `EN_ATTENTE`**, sans que la
+gestionnaire saisisse chaque compte :
+
+| | Lien de **groupe** | Invitation **individuelle** |
+|---|---|---|
+| Pour qui | tout le groupe WhatsApp de la tontine | une personne qui n'est pas dans le groupe |
+| Utilisations | plusieurs personnes | une seule fois |
+| Pré-remplissage | aucun | prénom, nom, téléphone, nombre de parts |
+| Parts à l'arrivée | 1 (la gestionnaire ajuste ensuite) | celles fixées dans l'invitation |
+| Validité | 7 jours ; un seul lien actif par tontine | 7 jours ; réservée au téléphone invité |
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `POST` | `/tontine/{id}/lien-groupe` | `GESTIONNAIRE` propriétaire | génère le lien de groupe ; l'ancien passe `ANNULEE` |
+| `POST` | `/tontine/{id}/invitations` | `GESTIONNAIRE` propriétaire | crée une invitation individuelle (téléphone obligatoire) |
+| `GET` | `/invitation` | `GESTIONNAIRE` | ses invitations, des plus récentes aux plus anciennes |
+| `GET` | `/invitation/{token}` | **public** | nom de la tontine et pré-remplissage, ou la raison du refus |
+| `POST` | `/invitation/{token}/rejoindre` | `MEMBRE` | crée la participation (`204`) |
+
+Parcours d'un membre : il ouvre le lien → l'écran appelle `GET /invitation/{token}` et affiche
+tout de suite « ce lien a expiré » ou le formulaire → il crée son compte (ou se connecte s'il en a
+déjà un) → l'écran appelle `/rejoindre`. Pour lui, c'est **un seul écran et un seul bouton**.
+
+Refus possibles, avec un message pensé pour des utilisateurs peu habitués aux applications :
+lien inconnu (`404`), remplacé (`410`), expiré (`410`), déjà utilisé (`409`), tontine déjà
+démarrée (`409`), invitation individuelle utilisée par un autre téléphone (`403`), déjà membre
+(`409`).
+
+```
+EN_ATTENTE ──rejoindre (individuelle)──▶ ACCEPTE
+     │
+     └──nouveau lien de groupe──▶ ANNULEE
+(expiration : jugée sur expireAt, quel que soit le statut)
+```
+
 ### Autres ressources (CRUD générique, sans règles métier pour l'instant)
 
-`/invitation`, `/importMembre`, `/notification`.
+`/importMembre`, `/notification`.
 
 Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
 
@@ -323,6 +360,7 @@ Les erreurs métier renvoient un message lisible et un code HTTP cohérent :
 | `404` | ressource ou route introuvable | tontine inexistante |
 | `405` | méthode HTTP non prise en charge par la route | `POST /tirage` |
 | `409` | l'état actuel de la ressource bloque l'action | modifier une tontine `ACTIVE`, réactiver une tontine `TERMINEE` |
+| `410` | la ressource a existé mais n'est plus utilisable | lien d'invitation expiré ou remplacé |
 
 ## Architecture
 
@@ -384,6 +422,47 @@ Choix notables :
   toujours l'utilisateur connecté, quoi que le client envoie.
 - **Secrets hors du code** : mot de passe de base et secret JWT viennent de variables d'environnement.
 
+### Des liens d'invitation impossibles à deviner
+
+Un lien d'invitation, c'est une **clé** : quiconque connaît son token peut rejoindre la tontine.
+Avant ce chantier, c'était le client qui choisissait le token (`POST /invitation` recevait
+l'entité brute) ; la base contenait des tokens comme `abc123`, et deux invitations partageaient le
+même (`xyz789`). Un programme qui essaie toutes les combinaisons de 6 lettres et chiffres en fait
+le tour en quelques minutes.
+
+Le token est désormais fabriqué par le serveur, et seulement par lui :
+
+```java
+private final SecureRandom hasard = new SecureRandom();
+
+private String genererToken() {
+    byte[] octets = new byte[32];                 // 256 bits de hasard
+    hasard.nextBytes(octets);
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(octets);
+}
+```
+
+- **`SecureRandom`, pas `Random`.** `Random` est un générateur déterministe : quelques valeurs
+  observées suffisent à prédire les suivantes. `SecureRandom` puise dans l'entropie du système
+  et n'est pas prévisible ; c'est le même choix que pour le tirage au sort.
+- **256 bits.** 2²⁵⁶ tokens possibles, soit plus que le nombre d'atomes estimé de l'univers
+  observable : les essayer un à un n'a aucune chance d'aboutir, même à des milliards d'essais par
+  seconde.
+- **Base64 « URL ».** Les octets bruts ne s'écrivent pas dans une adresse ; la variante URL de
+  Base64 n'utilise que `A-Z a-z 0-9 - _` (ni `+` ni `/`, qui ont un sens dans une URL), et sans le
+  remplissage `=`. Résultat : 43 caractères, collables tels quels dans WhatsApp.
+- **La base garantit l'unicité.** La migration `V3` impose `token NOT NULL UNIQUE`. La contrainte
+  sert deux fois : elle rejette tout doublon, même venu d'un bug, et l'index qu'elle crée rend
+  instantanée la recherche par token à chaque clic sur un lien.
+- **Une clé n'est jamais montrée à qui ne la possède pas.** La liste des invitations est réservée à
+  la gestionnaire et filtrée sur ses tontines ; la consultation publique d'un lien renvoie un DTO
+  minimal (`LienInvitationDTO` : ni id, ni token, ni statut interne) ; les messages d'erreur ne
+  répètent pas le token.
+- **Une clé peut être changée.** Si le lien de groupe circule hors du groupe, la gestionnaire en
+  génère un nouveau : l'ancien est immédiatement refusé. Une invitation individuelle ne sert qu'au
+  téléphone invité, une seule fois. Et tout lien expire au bout de 7 jours, ou dès que la tontine
+  démarre.
+
 ## Tests
 
 ```bash
@@ -393,19 +472,21 @@ Choix notables :
 
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
-  `TransactionServiceTest` :
+  `TransactionServiceTest`, `InvitationServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
   répartition part / caisse, retards à la clôture, composition de l'urne, compensation, versements
   et reports, intérêts, échéanciers (arrondis, dates de fin de mois), remboursements et retards de
   prêts, lignes du journal financier (sens déduit du type, montant, id de référence, aucune ligne
-  si l'action est refusée ou si le montant vaut 0). Le hasard du tirage est remplacé par un faux `Random` qui
+  si l'action est refusée ou si le montant vaut 0), invitations (token de 43 caractères, ancien lien
+  annulé et non supprimé, expiration jugée sur la date, lien transféré refusé, usage unique). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
   `TirageControllerSecurityTest`, `PretControllerSecurityTest`,
-  `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest`,
+  `InvitationControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -435,13 +516,18 @@ Le développement suit un planning en 8 phases.
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
-| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | ⏳ à venir |
+| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle) ; notifications et import à venir |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- `/invitation`, `/importMembre` et `/notification` n'ont pas encore de règles métier ni de
-  contrôle de propriété.
+- `/importMembre` et `/notification` n'ont pas encore de règles métier ni de contrôle de propriété.
+- Les invitations ne sont pas encore **envoyées** par l'application : la gestionnaire copie le lien
+  dans WhatsApp. L'envoi par SMS d'une invitation individuelle viendra avec les notifications.
+- Une invitation individuelle ne peut pas être annulée avant ses 7 jours ; le statut `EXPIRE` de
+  l'enum n'est jamais écrit (l'expiration est jugée sur la date).
+- `rejoindre` duplique la création d'une participation de `ParticipationService` (deux usages :
+  factorisation repoussée au troisième).
 - Le journal ne connaît pas le **mode de paiement** des gains, des prêts et des remboursements :
   `tirerAuSort` ne reçoit pas de corps et `VersementDTO` / `DemandePretDTO` n'ont que le montant.
   Seuls les paiements de cotisation ont leur mode et leur référence.
@@ -650,7 +736,49 @@ reste lisible.
 - **`ModePaiementCotisation` renommé `ModePaiement`** et rangé à la racine de `enums/` : un gain ou
   un prêt se règle aussi en CASH ou par Wave. Sans effet sur la base, qui stocke le nom des valeurs.
 
+- **Deux sortes d'invitations, que le CDC confondait.** Le cahier des charges demandait à la fois
+  un « lien unique par tontine, partageable sur WhatsApp » et un « token à usage unique » avec
+  pré-remplissage du nom. Les deux sont incompatibles : un lien posté dans un groupe et consommé
+  au premier clic bloquerait tous les autres membres. On garde donc les deux, séparés par un
+  `TypeInvitation` : `GROUPE` (multi-usage, pour le groupe WhatsApp, très pratique) et
+  `INDIVIDUELLE` (usage unique, pré-remplie, pour une personne hors du groupe). Un enum plutôt qu'un
+  booléen : la valeur dit ce qu'elle est, et un troisième type reste possible.
+- **Un seul lien de groupe actif par tontine.** Si un lien fuit hors du groupe, la gestionnaire en
+  génère un nouveau et l'ancien cesse de fonctionner ; il n'y a jamais de doute sur « le bon lien ».
+  L'ancien n'est pas supprimé mais passe `ANNULEE` : la personne qui clique dessus lit « ce lien a
+  été remplacé » au lieu d'un « introuvable » incompréhensible, et l'historique est conservé.
+  L'annulation et la création forment une seule `@Transactional`, pour ne jamais laisser la tontine
+  sans lien valide.
+- **Lien de groupe : 1 part par défaut.** Laisser chaque membre choisir ses parts aurait permis à
+  n'importe qui de modifier l'équilibre de la tontine ; la gestionnaire ajuste ensuite pour ceux qui
+  prennent 2 parts (gnari lokho). Une invitation individuelle, elle, fixe les parts dès le départ.
+- **Rejoindre en deux appels côté API, en un écran côté utilisateur.** La crainte était le public :
+  beaucoup de membres sont peu habitués aux applications. Mais ce que la personne voit dépend de
+  l'écran, pas de l'API : un seul formulaire, un seul bouton, et l'écran enchaîne inscription puis
+  `/rejoindre`. Côté serveur, on réutilise l'inscription existante et déjà testée, et un membre qui
+  a déjà un compte (dans une autre tontine) se connecte simplement. Une route **publique** de
+  consultation dit dès le clic si le lien est utilisable, avant que la personne ne remplisse quoi
+  que ce soit.
+- **Les messages d'erreur des invitations sont écrits pour les membres.** Ils sont affichés tels
+  quels : « Ce lien a expiré. Demandez un nouveau lien à votre gestionnaire. » plutôt que
+  « L'invitation Xk9mP2… a expiré. ».
+- **Une invitation ne fait pas entrer dans une tontine déjà démarrée.** Même règle que pour les
+  participations (le tirage serait faussé) : la génération et l'utilisation d'un lien sont
+  refusées dès que la tontine n'est plus `EN_ATTENTE`, même si le lien n'a pas encore expiré.
+- **L'expiration est jugée sur la date, pas sur un statut.** Rien ne passe les invitations en
+  `EXPIRE` ; s'en remettre au statut aurait rendu un lien éternel. `expireAt` est calculé à partir
+  de `createdAt` (+7 jours exactement).
+
 ### Bugs trouvés et corrigés
+
+- **Les invitations étaient des clés en libre-service.** `/invitation` n'avait aucune règle dans
+  `SecurityConfig` et exposait un CRUD générique : n'importe quel utilisateur connecté pouvait
+  fabriquer une invitation avec le token, le statut et la date d'expiration de son choix, la
+  « réutiliser » en la repassant `EN_ATTENTE`, ou lister **toutes** les invitations de la plateforme,
+  c'est-à-dire les clés d'entrée de toutes les tontines. La base contenait d'ailleurs deux
+  invitations au même token. CRUD supprimé, token généré par le serveur (voir
+  [Sécurité](#des-liens-dinvitation-impossibles-à-deviner)), unicité imposée par la base, liste
+  filtrée par gestionnaire.
 
 - **N'importe quel utilisateur connecté pouvait falsifier le journal financier.** `/transaction`
   n'avait aucune règle dans `SecurityConfig` et exposait un CRUD générique : un `MEMBRE` pouvait
