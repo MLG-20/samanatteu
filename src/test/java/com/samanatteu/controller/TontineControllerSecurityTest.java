@@ -25,12 +25,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.samanatteu.config.SecurityConfig;
+import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.pret.PretDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.security.JwtAccessDeniedHandler;
 import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
+import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.service.pret.PretService;
 import com.samanatteu.service.tontine.CycleService;
 import com.samanatteu.service.tontine.TontineService;
@@ -62,6 +64,10 @@ class TontineControllerSecurityTest {
 
     @MockitoBean
     private PretService pretService;
+
+    // Routes /lien-groupe et /invitations.
+    @MockitoBean
+    private InvitationService invitationService;
 
     // JwtAuthFilter a besoin d'un JwtUtil pour se construire. On le remplace par un faux : dans ces tests
     // on n'envoie jamais de vrai token, l'utilisateur est simulé par @WithMockUser.
@@ -291,5 +297,84 @@ class TontineControllerSecurityTest {
                 .andExpect(status().isBadRequest());
 
         verify(pretService, never()).accorderPret(any(), any());
+    }
+
+    // ------------------------------- invitations (/lien-groupe, /invitations)
+
+    @Test
+    void lienDeGroupe_sansToken_donne401() throws Exception {
+        mockMvc.perform(post("/tontine/6/lien-groupe"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "771234566", roles = "MEMBRE")
+    void lienDeGroupe_parUnMembre_donne403() throws Exception {
+        mockMvc.perform(post("/tontine/6/lien-groupe"))
+                .andExpect(status().isForbidden());
+        verify(invitationService, never()).genererLienGroupe(any());
+    }
+
+    @Test
+    @WithMockUser(username = "770000099", roles = "ADMIN")
+    void lienDeGroupe_parUnAdmin_donne403() throws Exception {
+        mockMvc.perform(post("/tontine/6/lien-groupe"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void lienDeGroupe_parUnGestionnaire_donne200() throws Exception {
+        when(invitationService.genererLienGroupe(6L)).thenReturn(new InvitationDTO());
+
+        mockMvc.perform(post("/tontine/6/lien-groupe"))
+                .andExpect(status().isOk());
+    }
+
+    private static final String DEMANDE_INVITATION = """
+            {"telephone": "771234566", "prenom": "Awa", "nombreParts": 2}""";
+
+    @Test
+    @WithMockUser(username = "771234566", roles = "MEMBRE")
+    void invitationIndividuelle_parUnMembre_donne403() throws Exception {
+        mockMvc.perform(post("/tontine/6/invitations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(DEMANDE_INVITATION))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void invitationIndividuelle_parUnGestionnaire_donne200() throws Exception {
+        when(invitationService.genererInvitationIndividuelle(eq(6L), any())).thenReturn(new InvitationDTO());
+
+        mockMvc.perform(post("/tontine/6/invitations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(DEMANDE_INVITATION))
+                .andExpect(status().isOk());
+    }
+
+    // @NotBlank : le téléphone réserve l'invitation à une seule personne.
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void invitationIndividuelle_sansTelephone_donne400SansAppelerLeService() throws Exception {
+        mockMvc.perform(post("/tontine/6/invitations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"prenom\": \"Awa\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(invitationService, never()).genererInvitationIndividuelle(any(), any());
+    }
+
+    // @Min(1) sur le nombre de parts.
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void invitationIndividuelle_zeroPart_donne400() throws Exception {
+        mockMvc.perform(post("/tontine/6/invitations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"telephone\": \"771234566\", \"nombreParts\": 0}"))
+                .andExpect(status().isBadRequest());
+
+        verify(invitationService, never()).genererInvitationIndividuelle(any(), any());
     }
 }
