@@ -3,6 +3,7 @@ package com.samanatteu.dto.onboarding;
 import java.time.LocalDateTime;
 
 import com.samanatteu.enums.onboarding.StatutInvitation;
+import com.samanatteu.enums.onboarding.TypeInvitation;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -32,6 +33,8 @@ public class InvitationDTO {
     private LocalDateTime expireAt;
 
     private StatutInvitation statut;
+
+    private TypeInvitation type;
 
     private LocalDateTime createdAt;
 }

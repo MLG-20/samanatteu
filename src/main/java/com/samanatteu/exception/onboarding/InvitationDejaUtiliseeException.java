@@ -5,7 +5,7 @@ import org.springframework.http.HttpStatus;
 import com.samanatteu.exception.SamanatteuException;
 
 public class InvitationDejaUtiliseeException extends SamanatteuException{
-    public InvitationDejaUtiliseeException(String token){
-        super("L'invitation " + token + " a déjà été utilisée.", HttpStatus.CONFLICT);
+    public InvitationDejaUtiliseeException(){
+        super("Ce lien a déjà été utilisé.", HttpStatus.CONFLICT);
     }
 }

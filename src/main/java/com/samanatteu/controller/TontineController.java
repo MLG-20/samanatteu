@@ -3,11 +3,14 @@ package com.samanatteu.controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.samanatteu.dto.onboarding.DemandeInvitationDTO;
+import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.pret.DemandePretDTO;
 import com.samanatteu.dto.pret.PretDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.service.pret.PretService;
 import com.samanatteu.service.tontine.CycleService;
 import com.samanatteu.service.tontine.TontineService;
@@ -31,12 +34,14 @@ public class TontineController {
     private final TontineService tontineService;
     private final CycleService cycleService;
     private final PretService pretService;
+    private final InvitationService invitationService;
 
     public TontineController(TontineService tontineService, CycleService cycleService,
-            PretService pretService) {
+            PretService pretService, InvitationService invitationService) {
         this.tontineService = tontineService;
         this.cycleService = cycleService;
         this.pretService = pretService;
+        this.invitationService = invitationService;
     }
 
     @GetMapping
@@ -90,6 +95,19 @@ public class TontineController {
     @PostMapping("/{id}/prets")
     public PretDTO accorderPret(@PathVariable Long id, @Valid @RequestBody DemandePretDTO demande) {
         return pretService.accorderPret(id, demande);
+    }
+
+    // Génère le lien de groupe (l'ancien est annulé). Sécurité : POST /tontine/**.
+    @PostMapping("/{id}/lien-groupe")
+    public InvitationDTO genererLienGroupe(@PathVariable Long id) {
+        return invitationService.genererLienGroupe(id);
+    }
+
+    // Invitation individuelle (usage unique) pour un membre hors du groupe WhatsApp.
+    @PostMapping("/{id}/invitations")
+    public InvitationDTO genererInvitationIndividuelle(@PathVariable Long id,
+            @Valid @RequestBody DemandeInvitationDTO demande) {
+        return invitationService.genererInvitationIndividuelle(id, demande);
     }
 
     @PutMapping("/{id}")

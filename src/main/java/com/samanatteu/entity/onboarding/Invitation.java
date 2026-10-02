@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.enums.onboarding.StatutInvitation;
+import com.samanatteu.enums.onboarding.TypeInvitation;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -58,6 +59,11 @@ public class Invitation {
     @Enumerated(EnumType.STRING)
     @Column(name = "statut")
     private StatutInvitation statut;
+
+    // Lien de groupe ou invitation individuelle (colonne ajoutée en V3)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type")
+    private TypeInvitation type;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

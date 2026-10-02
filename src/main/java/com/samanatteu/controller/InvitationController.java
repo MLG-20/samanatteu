@@ -3,17 +3,14 @@ package com.samanatteu.controller;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.onboarding.InvitationDTO;
-import com.samanatteu.entity.onboarding.Invitation;
+import com.samanatteu.dto.onboarding.LienInvitationDTO;
 import com.samanatteu.service.onboarding.InvitationService;
 
 @RequestMapping("/invitation")
@@ -30,25 +27,17 @@ public class InvitationController {
         return invitationService.listInvitation();
     }
 
-    @PostMapping
-
-    public InvitationDTO createInvitation(@RequestBody Invitation invitation) {
-        return invitationService.createInvitation(invitation);
+    // Publique : la personne n'a pas encore de compte quand elle clique sur le lien.
+    @GetMapping("/{token}")
+    public LienInvitationDTO consulterLien(@PathVariable String token) {
+        return invitationService.consulterLien(token);
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<InvitationDTO> updateInvitation(@PathVariable Long id,
-            @RequestBody Invitation invitationModifier) {
-        return invitationService.updateInvitation(id, invitationModifier)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    // 204 : rien à renvoyer, l'écran affiche simplement « Bienvenue ».
+    @PostMapping("/{token}/rejoindre")
+    public ResponseEntity<Void> rejoindre(@PathVariable String token) {
+        invitationService.rejoindre(token);
+        return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteInvitation(@PathVariable Long id) {
-        if (invitationService.deleteInvitation(id)) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
-    }
 }
