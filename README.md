@@ -5,8 +5,8 @@ Spring Boot. Un gestionnaire crée une tontine, y inscrit des membres, et l'appl
 cycles, les cotisations, les tirages et les prêts.
 
 > **État du projet : en développement actif.** Authentification, tontines, participations,
-> cycles et cotisations, tirages, caisse de prêts, prêts, journal financier et invitations sont
-> fonctionnels et testés ; notifications, import et tableaux de bord restent à faire. Voir
+> cycles et cotisations, tirages, caisse de prêts, prêts, journal financier, invitations et
+> notifications (envoi simulé) sont fonctionnels et testés ; import et tableaux de bord restent à faire. Voir
 > [Avancement](#avancement).
 
 ## Sommaire
@@ -342,9 +342,36 @@ EN_ATTENTE ──rejoindre (individuelle)──▶ ACCEPTE
 (expiration : jugée sur expireAt, quel que soit le statut)
 ```
 
+### Notifications (implémenté, testé — envoi simulé)
+
+Les membres sont prévenus **par SMS toujours, et par email en plus** s'ils en ont un
+(CDC v1.1 §4.10). Aucune route ne permet d'envoyer une notification : comme le journal
+financier, elles sont la **conséquence** d'une action métier.
+
+| Événement | Déclenché par | Exemple de SMS |
+|---|---|---|
+| Bienvenue | inscription par la gestionnaire, ou arrivée par un lien d'invitation | `Natt des femmes : bienvenue Awa Diop ! Vous avez 2 part(s) de 10000 F.` |
+| Paiement confirmé | `POST /cotisation/{id}/paiement` | `Natt des femmes : Awa Diop, paiement de 15000 F reçu (cycle 1). Reste à payer : 5000 F.` |
+| Résultat du tirage | `POST /cycle/{id}/tirage` (au gagnant) | `Natt des femmes : félicitations Awa Diop ! Vous avez gagné le tirage du cycle 1 : 30000 F. Déjà remis : 30000 F.` |
+| Rappel de cotisation | tâche planifiée, chaque jour à 9h | 3 jours avant la fin prévue du cycle, pour les cotisations pas encore soldées |
+| Rappel d'échéance | tâche planifiée, chaque jour à 9h | 3 jours avant une échéance de prêt non payée |
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `GET` | `/notification` | `GESTIONNAIRE`, `MEMBRE` | **ses propres** notifications, des plus récentes aux plus anciennes |
+
+Chaque envoi laisse une ligne en base (canal `SMS` ou `EMAIL`, statut `ENVOYE` ou `ECHEC`) :
+preuve en cas de litige (« je n'ai jamais reçu le rappel »), et envois en échec relançables plus
+tard.
+
+**Envoi simulé.** Il n'y a pas encore de compte chez un fournisseur de SMS : les messages sont
+écrits dans la console (`SMS (simulé) à 771000001 : …`). Brancher Orange SMS API ou Twilio
+consistera à écrire une classe de plus, sans toucher aux services (voir
+[Architecture](#architecture)).
+
 ### Autres ressources (CRUD générique, sans règles métier pour l'instant)
 
-`/importMembre`, `/notification`.
+`/importMembre`.
 
 Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
 
@@ -404,6 +431,11 @@ Choix notables :
 - **Les services ne dépendent pas de Spring Security** : ils demandent « qui est connecté ? » et
   « a-t-il tel rôle ? » à `UtilisateurConnecte` (`telephone()`, `aLeRole(RoleUtilisateur)`), seul
   endroit, avec `JwtAuthFilter`, à toucher au `SecurityContextHolder`.
+- **Les services dépendent d'interfaces, pas de fournisseurs.** `NotificationService` reçoit un
+  `EnvoyeurSms` et un `EnvoyeurEmail` (interfaces). Aujourd'hui, Spring injecte
+  `EnvoyeurSmsConsole` / `EnvoyeurEmailConsole`, qui écrivent dans la console ; demain, une classe
+  `EnvoyeurSmsOrange implements EnvoyeurSms` appellera la vraie API, et aucun service ne changera.
+  Les tests en profitent : ils remplacent les envoyeurs par des faux pour simuler une panne.
 - **Une règle sur une entité vit dans l'entité** : « cette tontine est-elle gérée par tel
   utilisateur ? » est `Tontine.estGereePar(telephone)`. Son usage (« sinon 403 ») est
   `UtilisateurConnecte.verifierGestionnaire(tontine)`, partagé par les services de tontines,
@@ -472,7 +504,7 @@ private String genererToken() {
 
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
-  `TransactionServiceTest`, `InvitationServiceTest` :
+  `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
@@ -480,13 +512,15 @@ private String genererToken() {
   et reports, intérêts, échéanciers (arrondis, dates de fin de mois), remboursements et retards de
   prêts, lignes du journal financier (sens déduit du type, montant, id de référence, aucune ligne
   si l'action est refusée ou si le montant vaut 0), invitations (token de 43 caractères, ancien lien
-  annulé et non supprimé, expiration jugée sur la date, lien transféré refusé, usage unique). Le hasard du tirage est remplacé par un faux `Random` qui
+  annulé et non supprimé, expiration jugée sur la date, lien transféré refusé, usage unique),
+  notifications (déclenchées par chaque action et jamais si elle est refusée ; SMS seul ou SMS +
+  email, un envoi raté n'interrompt rien ; rappels J-3, reste dû et date, montants sans centimes). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
   `TirageControllerSecurityTest`, `PretControllerSecurityTest`,
   `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest`,
-  `InvitationControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `InvitationControllerSecurityTest`, `NotificationControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -516,14 +550,21 @@ Le développement suit un planning en 8 phases.
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
-| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle) ; notifications et import à venir |
+| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé) ; reste l'import, le branchement d'un vrai fournisseur et « mot de passe oublié » |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- `/importMembre` et `/notification` n'ont pas encore de règles métier ni de contrôle de propriété.
-- Les invitations ne sont pas encore **envoyées** par l'application : la gestionnaire copie le lien
-  dans WhatsApp. L'envoi par SMS d'une invitation individuelle viendra avec les notifications.
+- `/importMembre` n'a pas encore de règles métier ni de contrôle de propriété.
+- Les SMS et emails sont **simulés** (écrits dans la console) : aucun fournisseur (Orange SMS API,
+  Twilio, serveur SMTP) n'est encore branché. Les emails sont en texte brut (pas de modèle HTML
+  Thymeleaf).
+- Les invitations ne sont pas **envoyées** par l'application : la gestionnaire copie le lien dans
+  WhatsApp. Un SMS d'invitation individuelle demanderait de tracer un envoi vers un numéro qui n'a
+  pas encore de compte (`notification.destinataire` est obligatoire) : écarté pour l'instant.
+- Les notifications en `ECHEC` ne sont pas encore relancées automatiquement.
+- Les rappels J-3 supposent que l'application tourne à 9h : un jour où elle est arrêtée à cette
+  heure, les rappels de ce jour-là ne partent pas (pas de rattrapage).
 - Une invitation individuelle ne peut pas être annulée avant ses 7 jours ; le statut `EXPIRE` de
   l'enum n'est jamais écrit (l'expiration est jugée sur la date).
 - `rejoindre` duplique la création d'une participation de `ParticipationService` (deux usages :
@@ -769,7 +810,51 @@ reste lisible.
   `EXPIRE` ; s'en remettre au statut aurait rendu un lien éternel. `expireAt` est calculé à partir
   de `createdAt` (+7 jours exactement).
 
+- **SMS toujours, email en plus, derrière des interfaces.** Pas encore de compte chez un
+  fournisseur de SMS : plutôt qu'attendre, les services parlent à `EnvoyeurSms` /
+  `EnvoyeurEmail`, et une implémentation « console » tient lieu d'envoi. Le jour du vrai
+  fournisseur, on ajoute une classe ; les services, eux, ne changent pas.
+- **Un SMS raté n'annule jamais un paiement.** Les notifications partent pendant l'action métier,
+  qui est souvent `@Transactional` : si l'erreur du fournisseur remontait, le paiement d'Awa serait
+  annulé (rollback) pour un simple SMS. L'envoi est donc dans un `try/catch` : l'échec est noté
+  (`ECHEC`), l'action continue. Un `try` par canal : un SMS raté n'empêche pas l'email.
+- **Chaque envoi est tracé, une ligne par canal.** Le même événement envoyé par SMS et par email
+  donne deux lignes, chacune avec son statut. `type` et `canal` sont des enums (migration `V4`),
+  plus une chaîne libre ; la base impose `NOT NULL` sur destinataire, type, canal, message, statut
+  et date. `titre` reste facultatif : seul l'email a un objet.
+- **Les messages parlent au membre.** Ils commencent par le **nom de la tontine** (un membre peut
+  en avoir plusieurs, et « Natt des femmes » lui parle plus que le nom de l'application), puis son
+  prénom et son nom. Ils restent sous 160 caractères (au-delà, un SMS est facturé double). Les
+  montants s'affichent sans centimes (`10000`, pas `10000.00` : il n'y a pas de centimes en FCFA)
+  et les dates en `jj/mm/aaaa`.
+- **Un message utilisé deux fois est écrit une fois.** La bienvenue part à l'inscription par la
+  gestionnaire **et** à l'arrivée par un lien : le texte vit dans
+  `NotificationService.notifierBienvenue`, pas dans les deux services.
+- **Rappels J-3 : une fois, à une heure raisonnable.** Tâches `@Scheduled` à 9h (pas minuit : un
+  SMS réveille). On cherche les échéances dont la date est **exactement** dans 3 jours (une
+  égalité, pas « avant ») : chacun reçoit un seul rappel, pas un par jour. Le montant rappelé est
+  le **reste** dû (une partie a pu être payée), part et caisse de prêts comprises pour une
+  cotisation.
+- **Chacun ne lit que ses notifications.** Elles contiennent des montants et des gains : même
+  règle que le journal financier. L'ADMIN n'y a pas accès (frontière SaaS). Le `DELETE` du CRUD
+  générique a été supprimé : une preuve d'envoi ne s'efface pas.
+
 ### Bugs trouvés et corrigés
+
+- **Les notifications de toute la plateforme étaient lisibles par n'importe qui.**
+  `GET /notification` renvoyait les messages de tous les membres (téléphones, montants payés,
+  gains) à tout utilisateur connecté, et le CRUD générique permettait de fabriquer une
+  notification « envoyée » ou d'en effacer une. Lecture filtrée sur le connecté, règle ajoutée,
+  écritures supprimées.
+- **Montants affichés « 10000.00 F » dans les SMS.** Les montants lus en base gardent leurs deux
+  décimales ; `toPlainString()` les affichait telles quelles. Invisible dans les tests unitaires
+  (montants construits sans décimales), repéré au test réel sur la base de test, corrigé avec
+  `stripTrailingZeros()` et verrouillé par un test.
+- **Deux erreurs attrapées en revue avant tout commit.** Une dépendance circulaire
+  (`NotificationService` recevait `ParticipationService`, qui reçoit `NotificationService` :
+  l'application n'aurait pas démarré) et une implémentation d'envoi sans `@Component` (Spring
+  n'aurait trouvé aucun `EnvoyeurEmail`). Le service recevait aussi d'abord la classe console
+  plutôt que l'interface, ce qui aurait annulé tout l'intérêt de l'interface.
 
 - **Les invitations étaient des clés en libre-service.** `/invitation` n'avait aucune règle dans
   `SecurityConfig` et exposait un CRUD générique : n'importe quel utilisateur connecté pouvait
