@@ -6,7 +6,7 @@ cycles, les cotisations, les tirages et les prêts.
 
 > **État du projet : en développement actif.** Authentification, tontines, participations,
 > cycles et cotisations, tirages, caisse de prêts, prêts, journal financier, invitations et
-> notifications (envoi simulé) sont fonctionnels et testés ; import et tableaux de bord restent à faire. Voir
+> notifications (envoi simulé) sont fonctionnels et testés ; l'import de membres par CSV est fonctionnel et testé ; import Excel et tableaux de bord restent à faire. Voir
 > [Avancement](#avancement).
 
 ## Sommaire
@@ -369,11 +369,55 @@ tard.
 consistera à écrire une classe de plus, sans toucher aux services (voir
 [Architecture](#architecture)).
 
-### Autres ressources (CRUD générique, sans règles métier pour l'instant)
+### Import de membres par fichier CSV (implémenté, testé)
 
-`/importMembre`.
+La gestionnaire inscrit ses membres en une fois à partir d'un fichier (CDC v1.1 §4.8 :
+« 300 membres en quelques minutes »).
 
-Elles demandent simplement d'être connecté : **elles seront durcies au fil des phases.**
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| `POST` | `/tontine/{id}/import` | `GESTIONNAIRE` propriétaire | importe le fichier envoyé en `multipart/form-data`, partie `fichier` |
+| `GET` | `/importMembre` | `GESTIONNAIRE` | **ses propres** rapports d'import, du plus récent au plus ancien |
+
+Le fichier a une ligne d'en-tête puis une ligne par membre. `email` et `parts` sont optionnels
+(1 part par défaut) ; un exemple est fourni dans [`exemples/membres.csv`](exemples/membres.csv).
+
+```csv
+nom,prenom,telephone,email,parts
+Diop,Awa,771110001,awa.diop@example.com,2
+Ndiaye,Fatou,771110002,,1
+```
+
+```bash
+curl -X POST http://localhost:8080/tontine/1/import \
+     -H "Authorization: Bearer <accessToken>" -F "fichier=@exemples/membres.csv"
+```
+
+**Import partiel.** Les lignes correctes sont importées, les autres sont expliquées dans le
+rapport avec leur numéro de ligne (celui du tableur) :
+
+```json
+{
+  "fichierNom": "membres.csv",
+  "nbMembresTotal": 6,
+  "nbImportes": 3,
+  "nbErreurs": 3,
+  "erreursDetail": "Ligne 5 : telephone invalide (9 chiffres commençant par 7)\nLigne 6 : nom manquant\nLigne 7 : telephone en double dans le fichier\n",
+  "statut": "TERMINE"
+}
+```
+
+- Une ligne est refusée si : le nom, le prénom ou le téléphone manque ; le téléphone n'est pas un
+  mobile sénégalais (9 chiffres commençant par 7) ; l'email est mal écrit ou déjà pris par un
+  autre compte ; le nombre de parts n'est pas un entier à partir de 1 ; le téléphone apparaît déjà
+  plus haut dans le fichier ; le membre participe déjà à la tontine.
+- Pour chaque ligne acceptée : le compte du téléphone est **réutilisé** s'il existe, sinon un
+  compte `MEMBRE` est créé **sans mot de passe** (personne ne peut s'y connecter tant que le membre
+  ne l'a pas choisi) ; puis le membre est inscrit avec les mêmes règles que les autres voies
+  d'inscription, et reçoit le SMS de bienvenue.
+- `statut` vaut `TERMINE` si au moins une ligne est passée, `ECHEC` sinon.
+- L'import entier est refusé, sans rien créer, si la tontine n'est plus `EN_ATTENTE` (`409`), si
+  le fichier est illisible ou ne contient aucun membre (`400`).
 
 ### Codes d'erreur
 
@@ -504,7 +548,8 @@ private String genererToken() {
 
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
-  `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest` :
+  `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest`,
+  `ImportMembreServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
@@ -514,13 +559,16 @@ private String genererToken() {
   si l'action est refusée ou si le montant vaut 0), invitations (token de 43 caractères, ancien lien
   annulé et non supprimé, expiration jugée sur la date, lien transféré refusé, usage unique),
   notifications (déclenchées par chaque action et jamais si elle est refusée ; SMS seul ou SMS +
-  email, un envoi raté n'interrompt rien ; rappels J-3, reste dû et date, montants sans centimes). Le hasard du tirage est remplacé par un faux `Random` qui
+  email, un envoi raté n'interrompt rien ; rappels J-3, reste dû et date, montants sans centimes),
+  import de fichier (import partiel, motif et numéro de chaque ligne refusée, compte réutilisé ou
+  créé sans mot de passe, parts lues ou 1 par défaut, aucun compte créé si l'import est refusé). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
   `TirageControllerSecurityTest`, `PretControllerSecurityTest`,
   `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest`,
-  `InvitationControllerSecurityTest`, `NotificationControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `InvitationControllerSecurityTest`, `NotificationControllerSecurityTest`,
+  `ImportMembreControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -550,12 +598,16 @@ Le développement suit un planning en 8 phases.
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
-| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé) ; reste l'import, le branchement d'un vrai fournisseur et « mot de passe oublié » |
+| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé), import de membres par CSV ; reste l'import Excel, le branchement d'un vrai fournisseur et « mot de passe oublié » |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- `/importMembre` n'a pas encore de règles métier ni de contrôle de propriété.
+- L'import ne lit que le **CSV** ; le format Excel (`.xlsx`) reste à faire.
+- Un compte créé par l'import reste inutilisable tant que « mot de passe oublié » n'existe pas.
+- L'import n'est pas transactionnel : s'il est interrompu au milieu (panne), les lignes déjà
+  traitées restent importées sans rapport enregistré ; le relancer est sans danger (les membres
+  déjà inscrits sont signalés, pas dupliqués).
 - Les SMS et emails sont **simulés** (écrits dans la console) : aucun fournisseur (Orange SMS API,
   Twilio, serveur SMTP) n'est encore branché. Les emails sont en texte brut (pas de modèle HTML
   Thymeleaf).
@@ -838,9 +890,32 @@ reste lisible.
 - **Chacun ne lit que ses notifications.** Elles contiennent des montants et des gains : même
   règle que le journal financier. L'ADMIN n'y a pas accès (frontière SaaS). Le `DELETE` du CRUD
   générique a été supprimé : une preuve d'envoi ne s'efface pas.
+- **L'import crée les comptes qui manquent.** Une ligne du fichier dont le téléphone n'a pas de
+  compte ne part pas en erreur : l'import crée le compte `MEMBRE` (sans mot de passe utilisable)
+  puis la participation ; un compte existant est réutilisé. Exiger que 300 personnes
+  s'inscrivent d'abord viderait l'import de son intérêt, et certains membres n'ont pas de
+  smartphone. Le membre choisit son mot de passe plus tard par « mot de passe oublié ».
+- **Import partiel, pas tout-ou-rien.** Une ligne fausse sur 300 ne doit pas bloquer les 299
+  autres : elle est comptée et expliquée dans le rapport, avec son numéro de ligne. Les refus de
+  l'inscription (membre déjà inscrit, email déjà pris) sont rattrapés ligne par ligne grâce à la
+  classe mère `SamanatteuException`. Renvoyer le fichier corrigé est donc sans danger.
+- **Ce qui condamne tout le fichier est vérifié avant la boucle.** Si les inscriptions sont
+  fermées, l'import est refusé d'emblée : vérifié ligne par ligne, chaque ligne aurait d'abord
+  créé un compte avant d'être refusée (des comptes qui ne participent à rien).
+- **Les règles d'inscription sont écrites une seule fois.** L'import était leur troisième usage
+  (après l'ajout par la gestionnaire et l'arrivée par un lien) : elles ont été regroupées dans
+  `ParticipationService.inscrire` (règle de trois).
+- **Un rapport d'import ne s'écrit pas à la main.** Comme une notification, c'est une trace
+  produite par le serveur : le CRUD générique (`POST`/`PUT`/`DELETE /importMembre`) a été
+  supprimé, il laissait le client inventer `nbImportes` et `nbErreurs`.
 
 ### Bugs trouvés et corrigés
 
+- **N'importe quel utilisateur connecté pouvait écrire et lire tous les rapports d'import.**
+  `/importMembre` n'avait aucune règle dans `SecurityConfig` et exposait un CRUD générique : un
+  `MEMBRE` pouvait fabriquer un rapport en choisissant lui-même les compteurs, modifier ou effacer
+  celui d'une autre gestionnaire, et `GET` renvoyait les rapports de toute la plateforme.
+  Écritures supprimées, lecture réservée au `GESTIONNAIRE` et filtrée sur ses tontines.
 - **Les notifications de toute la plateforme étaient lisibles par n'importe qui.**
   `GET /notification` renvoyait les messages de tous les membres (téléphones, montants payés,
   gains) à tout utilisateur connecté, et le CRUD générique permettait de fabriquer une
