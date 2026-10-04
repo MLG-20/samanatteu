@@ -25,9 +25,13 @@ import com.samanatteu.security.JwtAccessDeniedHandler;
 import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
 import com.samanatteu.service.auth.AuthService;
+import com.samanatteu.service.auth.MotDePasseOublieService;
 
-// Règles d'ACCÈS sur /auth/mot-de-passe : il faut être connecté, quel que soit le
-// rôle (la route n'a pas de règle propre, elle tombe sous anyRequest().authenticated()).
+// Règles d'ACCÈS sur les routes de mot de passe.
+// - /auth/mot-de-passe : il faut être connecté, quel que soit le rôle (pas de règle
+//   propre, la route tombe sous anyRequest().authenticated()).
+// - /auth/mot-de-passe-oublie et /auth/reinitialiser-mot-de-passe : publiques, celui
+//   qui a oublié son mot de passe n'a pas de token.
 // Même montage que les autres *ControllerSecurityTest.
 @WebMvcTest(AuthController.class)
 @Import({ SecurityConfig.class, JwtAuthentificationEntryPoint.class, JwtAccessDeniedHandler.class })
@@ -42,6 +46,9 @@ class AuthControllerSecurityTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private MotDePasseOublieService motDePasseOublieService;
 
     @MockitoBean
     private JwtUtil jwtUtil;
@@ -98,5 +105,62 @@ class AuthControllerSecurityTest {
     void changerMotDePasse_enPost_donne405() throws Exception {
         mockMvc.perform(post("/auth/mot-de-passe").contentType(MediaType.APPLICATION_JSON).content(CORPS_VALIDE))
                 .andExpect(status().isMethodNotAllowed());
+    }
+
+    // ------------------------------------------------------ mot de passe oublié
+
+    @Test
+    void demanderCode_sansToken_donne204() throws Exception {
+        mockMvc.perform(post("/auth/mot-de-passe-oublie").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"telephone": "771234566"}
+                        """))
+                .andExpect(status().isNoContent());
+
+        verify(motDePasseOublieService).demanderCode(any());
+    }
+
+    @Test
+    void demanderCode_sansTelephone_donne400() throws Exception {
+        mockMvc.perform(post("/auth/mot-de-passe-oublie").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(motDePasseOublieService);
+    }
+
+    @Test
+    void reinitialiser_sansToken_donne204() throws Exception {
+        mockMvc.perform(post("/auth/reinitialiser-mot-de-passe").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"telephone": "771234566", "code": "123456", "nouveauMotDePasse": "nouveaupasse456"}
+                        """))
+                .andExpect(status().isNoContent());
+
+        verify(motDePasseOublieService).reinitialiser(any());
+    }
+
+    // Même règle des 8 caractères que partout ailleurs, vérifiée avant le service.
+    @Test
+    void reinitialiser_nouveauTropCourt_donne400() throws Exception {
+        mockMvc.perform(post("/auth/reinitialiser-mot-de-passe").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"telephone": "771234566", "code": "123456", "nouveauMotDePasse": "abc"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.nouveauMotDePasse")
+                        .value("Le mot de passe doit contenir au moins 8 caractères."));
+
+        verifyNoInteractions(motDePasseOublieService);
+    }
+
+    @Test
+    void reinitialiser_sansCode_donne400() throws Exception {
+        mockMvc.perform(post("/auth/reinitialiser-mot-de-passe").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"telephone": "771234566", "nouveauMotDePasse": "nouveaupasse456"}
+                        """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(motDePasseOublieService);
     }
 }
