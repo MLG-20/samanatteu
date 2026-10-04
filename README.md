@@ -118,6 +118,8 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `POST` | `/auth/login` | public | connexion par **email ou téléphone** |
 | `POST` | `/auth/refresh` | public | échange un refresh token contre une nouvelle paire de tokens |
 | `PUT` | `/auth/mot-de-passe` | connecté | changer **son propre** mot de passe : `ancienMotDePasse` (preuve d'identité) et `nouveauMotDePasse` (8 caractères au moins) ; `204`, ou `400` si l'ancien est faux |
+| `POST` | `/auth/mot-de-passe-oublie` | public | envoie par SMS un **code à 6 chiffres** valable 10 minutes au `telephone` donné ; répond toujours `204`, que le numéro ait un compte ou non |
+| `POST` | `/auth/reinitialiser-mot-de-passe` | public | choisit un nouveau mot de passe avec `telephone`, `code` et `nouveauMotDePasse` ; `204`, ou `400` « code invalide ou expiré » |
 | `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN`) |
 | `GET` | `/utilisateur` | `ADMIN` | liste des utilisateurs |
 | `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou tout profil si `ADMIN`) : `nom`, `prenom`, `email` uniquement |
@@ -417,7 +419,7 @@ rapport avec leur numéro de ligne (celui du tableur) :
   plus haut dans le fichier ; le membre participe déjà à la tontine.
 - Pour chaque ligne acceptée : le compte du téléphone est **réutilisé** s'il existe, sinon un
   compte `MEMBRE` est créé **sans mot de passe** (personne ne peut s'y connecter tant que le membre
-  ne l'a pas choisi) ; puis le membre est inscrit avec les mêmes règles que les autres voies
+  ne l'a pas choisi, par « mot de passe oublié ») ; puis le membre est inscrit avec les mêmes règles que les autres voies
   d'inscription, et reçoit le SMS de bienvenue.
 - Une **ligne vide** n'est ni importée, ni signalée, ni comptée dans `nbMembresTotal` ; les
   lignes suivantes gardent leur numéro de tableur.
@@ -505,6 +507,10 @@ Choix notables :
 - **Identité prise dans le token, jamais dans le JSON** : le propriétaire d'une tontine créée est
   toujours l'utilisateur connecté, quoi que le client envoie.
 - **Secrets hors du code** : mot de passe de base et secret JWT viennent de variables d'environnement.
+- **Mot de passe oublié** : un code à 6 chiffres tiré avec `SecureRandom`, envoyé par SMS et
+  enregistré **haché** (BCrypt, comme un mot de passe), valable 10 minutes, à usage unique, bloqué
+  après 5 essais ratés ; seul le dernier code demandé compte. Les réponses ne révèlent jamais si un
+  numéro a un compte (demande toujours acceptée, refus toujours identique).
 
 ### Des liens d'invitation impossibles à deviner
 
@@ -557,7 +563,7 @@ private String genererToken() {
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
   `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest`,
-  `ImportMembreServiceTest`, `AuthServiceTest` :
+  `ImportMembreServiceTest`, `AuthServiceTest`, `MotDePasseOublieServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
@@ -572,7 +578,10 @@ private String genererToken() {
   créé sans mot de passe, parts lues ou 1 par défaut, aucun compte créé si l'import est refusé,
   classeur Excel fabriqué en mémoire : cases numériques lues comme du texte, lignes vides ignorées
   sans décaler les numéros, faux `.xlsx` refusé en `400`), changement de mot de passe (ancien
-  exigé, nouveau enregistré haché avec un vrai BCrypt, rien d'enregistré en cas de refus). Le hasard du tirage est remplacé par un faux `Random` qui
+  exigé, nouveau enregistré haché avec un vrai BCrypt, rien d'enregistré en cas de refus), mot de
+  passe oublié (`MotDePasseOublieServiceTest` : code envoyé en clair mais enregistré haché, numéro
+  inconnu sans erreur ni envoi, code utilisé / expiré / trop essayé refusé même s'il est bon, essai
+  raté compté, premier mot de passe d'un compte importé). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
@@ -605,7 +614,7 @@ Le développement suit un planning en 8 phases.
 | Phase | Contenu | État |
 |---|---|---|
 | 1 | Bases : projet, entités, base PostgreSQL | ✅ terminée |
-| 2 | Authentification et rôles | ✅ connexion, tokens, rôles, changement de mot de passe ; reste « mot de passe oublié » (par SMS) et la déconnexion |
+| 2 | Authentification et rôles | ✅ connexion, tokens, rôles, changement de mot de passe, mot de passe oublié (code par SMS) ; reste la déconnexion |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
@@ -616,7 +625,10 @@ Le développement suit un planning en 8 phases.
 
 - L'import Excel ne lit que le format `.xlsx` et la **première feuille** du classeur ; l'ancien
   format `.xls` n'est pas pris en charge.
-- Un compte créé par l'import reste inutilisable tant que « mot de passe oublié » n'existe pas.
+- Le nombre de **demandes** de code n'est pas limité : quelqu'un peut faire envoyer des SMS en
+  rafale à un numéro (gêne pour le destinataire, coût chez un vrai fournisseur). Seuls les essais
+  d'un code sont limités.
+- Le code de réinitialisation ne part que par SMS, pas encore par email.
 - Changer son mot de passe ne coupe pas les sessions ouvertes : un token émis avant le changement
   reste accepté jusqu'à son expiration (15 minutes pour l'access token, 7 jours pour le refresh
   token). La révocation viendra avec la déconnexion.
@@ -927,6 +939,26 @@ reste lisible.
   non un `401` : l'utilisateur est bien connecté, il s'est trompé dans un champ ; un `401` ferait
   croire au front-end que la session est perdue et le renverrait à l'écran de connexion. Le compte
   modifié est toujours celui du token : la route n'a pas d'identifiant.
+- **Mot de passe oublié : un code par SMS, haché, court et à usage unique.** La preuve d'identité
+  est la possession du téléphone. Le code (6 chiffres, `SecureRandom`) est enregistré haché comme
+  un mot de passe : lire la base ne permet pas de s'en servir. Il n'a qu'un million de valeurs
+  possibles, donc trois protections se complètent : 10 minutes de validité, usage unique, et un
+  compteur d'essais ratés qui le bloque au cinquième. C'est aussi par cette voie qu'un membre créé
+  par l'import choisit son premier mot de passe.
+- **Ne jamais révéler qui a un compte.** `/auth/mot-de-passe-oublie` répond `204` même pour un
+  numéro inconnu, et tous les refus de `/auth/reinitialiser-mot-de-passe` (numéro inconnu, code
+  faux, expiré, déjà utilisé, trop d'essais) donnent le même `400` avec le même message. Un message
+  précis renseignerait celui qui devine ; l'utilisateur honnête, lui, a toujours la même chose à
+  faire : demander un nouveau code.
+- **Le code ne passe pas par le journal des notifications.** Partout ailleurs, un SMS est envoyé
+  par `NotificationService`, qui enregistre le message dans la table `notification`. Le code y
+  serait lisible en clair et le hachage ne servirait plus à rien : ce SMS-là est envoyé
+  directement par `EnvoyeurSms`, sans trace de son contenu.
+- **Pas de transaction sur la réinitialisation, et un ordre choisi.** Avec `@Transactional`,
+  l'exception « code invalide » annulerait aussi l'enregistrement de l'essai raté : le compteur
+  resterait à 0 et ne bloquerait rien. Le code est marqué utilisé *avant* le changement de mot de
+  passe : si une panne survient entre les deux, il reste un code perdu (on en redemande un) et non
+  un code réutilisable.
 - **Excel et CSV partagent tout sauf la lecture.** Le lecteur Excel (Apache POI) rend la même
   liste de lignes découpées en cases que le lecteur CSV : contrôles, création des comptes,
   inscription et rapport ne savent pas d'où vient le fichier. Ajouter un format = écrire un
