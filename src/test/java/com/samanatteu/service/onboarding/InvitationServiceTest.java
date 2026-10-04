@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -33,12 +32,10 @@ import com.samanatteu.dto.onboarding.DemandeInvitationDTO;
 import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.onboarding.LienInvitationDTO;
 import com.samanatteu.entity.onboarding.Invitation;
-import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.onboarding.StatutInvitation;
 import com.samanatteu.enums.onboarding.TypeInvitation;
-import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.onboarding.InvitationAnnuleeException;
@@ -49,11 +46,10 @@ import com.samanatteu.exception.tontine.InscriptionsFermeesException;
 import com.samanatteu.exception.tontine.ParticipationDejaExistanteException;
 import com.samanatteu.exception.tontine.TontineIntrouvableException;
 import com.samanatteu.repository.onboarding.InvitationRepository;
-import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
-import com.samanatteu.service.notification.NotificationService;
+import com.samanatteu.service.tontine.ParticipationService;
 
 // Tests des règles d'InvitationService avec de faux repositories (Mockito).
 // Convention : la tontine 6 appartient au gestionnaire 770000101 ; 770000102 est un
@@ -66,13 +62,12 @@ class InvitationServiceTest {
     @Mock
     private TontineRepository tontineRepository;
     @Mock
-    private ParticipationRepository participationRepository;
-    @Mock
     private UtilisateurRepository utilisateurRepository;
-    // Les envois (SMS/email) sont vérifiés par NotificationServiceTest ; ici on
-    // vérifie seulement que le service métier les DÉCLENCHE.
+    // Les règles d'inscription (doublon, parts, ordre, SMS de bienvenue) sont vérifiées
+    // par ParticipationServiceTest ; ici on vérifie seulement que rejoindre APPELLE
+    // l'inscription avec la bonne tontine, le bon membre et le bon nombre de parts.
     @Mock
-    private NotificationService notificationService;
+    private ParticipationService participationService;
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
@@ -329,26 +324,17 @@ class InvitationServiceTest {
     // ------------------------------------------------------------ rejoindre
 
     @Test
-    void rejoindre_lienDeGroupe_creeUneParticipationActiveDUnePartEtLaisseLeLienValide() {
+    void rejoindre_lienDeGroupe_inscritLeMembreAvecUnePartEtLaisseLeLienValide() {
         connecter("771234566", "ROLE_MEMBRE");
         Invitation lien = invitation(TypeInvitation.GROUPE);
+        Utilisateur membre = membre30();
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(lien));
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre30()));
-        Participation derniere = new Participation();
-        derniere.setOrdreInscription(4);
-        when(participationRepository.findFirstByTontineIdOrderByOrdreInscriptionDesc(6L))
-                .thenReturn(Optional.of(derniere));
+        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre));
 
         invitationService.rejoindre("jeton");
 
-        ArgumentCaptor<Participation> capture = ArgumentCaptor.forClass(Participation.class);
-        verify(participationRepository).save(capture.capture());
-        Participation creee = capture.getValue();
-        assertEquals(30L, creee.getMembre().getId());
-        assertEquals(6L, creee.getTontine().getId());
-        assertEquals(1, creee.getNombreParts());
-        assertEquals(StatutParticipation.ACTIF, creee.getStatut());
-        assertEquals(5, creee.getOrdreInscription());
+        // Le membre vient du token (jamais du client) ; lien de groupe = 1 part.
+        verify(participationService).inscrire(lien.getTontine(), membre, 1);
         // Le lien de groupe sert à tout le groupe : il reste EN_ATTENTE.
         assertEquals(StatutInvitation.EN_ATTENTE, lien.getStatut());
         verify(invitationRepository, never()).save(any());
@@ -360,17 +346,13 @@ class InvitationServiceTest {
         Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
         invitation.setTelephone("771234566");
         invitation.setNombreParts(2);
+        Utilisateur membre = membre30();
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre30()));
-        when(participationRepository.findFirstByTontineIdOrderByOrdreInscriptionDesc(6L))
-                .thenReturn(Optional.empty());
+        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre));
 
         invitationService.rejoindre("jeton");
 
-        ArgumentCaptor<Participation> capture = ArgumentCaptor.forClass(Participation.class);
-        verify(participationRepository).save(capture.capture());
-        assertEquals(2, capture.getValue().getNombreParts());
-        assertEquals(1, capture.getValue().getOrdreInscription());
+        verify(participationService).inscrire(invitation.getTontine(), membre, 2);
         assertEquals(StatutInvitation.ACCEPTE, invitation.getStatut());
         verify(invitationRepository).save(invitation);
     }
@@ -388,19 +370,25 @@ class InvitationServiceTest {
         when(utilisateurRepository.findByTelephone("779999999")).thenReturn(Optional.of(intrus));
 
         assertThrows(AccesRefuseException.class, () -> invitationService.rejoindre("jeton"));
-        verify(participationRepository, never()).save(any());
+        verifyNoInteractions(participationService);
         assertEquals(StatutInvitation.EN_ATTENTE, invitation.getStatut());
     }
 
+    // L'inscription refuse (membre déjà dans la tontine) : le refus remonte tel quel,
+    // et l'invitation à usage unique n'est PAS consommée.
     @Test
-    void rejoindre_dejaMembreDeLaTontine_donne409() {
+    void rejoindre_inscriptionRefusee_donne409SansConsommerLInvitation() {
         connecter("771234566", "ROLE_MEMBRE");
-        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation(TypeInvitation.GROUPE)));
+        Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
+        invitation.setTelephone("771234566");
+        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
         when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre30()));
-        when(participationRepository.existsByMembreIdAndTontineId(30L, 6L)).thenReturn(true);
+        when(participationService.inscrire(any(), any(), any()))
+                .thenThrow(new ParticipationDejaExistanteException());
 
         assertThrows(ParticipationDejaExistanteException.class, () -> invitationService.rejoindre("jeton"));
-        verify(participationRepository, never()).save(any());
+        assertEquals(StatutInvitation.EN_ATTENTE, invitation.getStatut());
+        verify(invitationRepository, never()).save(any());
     }
 
     // Les contrôles du lien s'appliquent aussi à rejoindre (pas seulement à la consultation).
@@ -412,7 +400,7 @@ class InvitationServiceTest {
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
 
         assertThrows(InvitationDejaUtiliseeException.class, () -> invitationService.rejoindre("jeton"));
-        verify(participationRepository, never()).save(any());
+        verifyNoInteractions(participationService);
     }
 
     // ---------------------------------------------------------------- liste
@@ -425,35 +413,5 @@ class InvitationServiceTest {
 
         assertEquals(1, invitationService.listInvitation().size());
         verify(invitationRepository, never()).findAll();
-    }
-
-    // ---------------------------------------------------------- notifications
-
-    // Arrivée par un lien : même SMS de bienvenue que l'inscription par la gestionnaire.
-    @Test
-    void rejoindre_envoieLaBienvenueAvecLaParticipationCreee() {
-        connecter("771234566", "ROLE_MEMBRE");
-        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation(TypeInvitation.GROUPE)));
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre30()));
-
-        invitationService.rejoindre("jeton");
-
-        ArgumentCaptor<Participation> capture = ArgumentCaptor.forClass(Participation.class);
-        verify(participationRepository).save(capture.capture());
-        verify(notificationService).notifierBienvenue(capture.getValue());
-    }
-
-    @Test
-    void rejoindre_refuse_nEnvoieAucuneNotification() {
-        connecter("779999999", "ROLE_MEMBRE");
-        Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
-        invitation.setTelephone("771234566");
-        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
-        Utilisateur intrus = new Utilisateur();
-        intrus.setTelephone("779999999");
-        when(utilisateurRepository.findByTelephone("779999999")).thenReturn(Optional.of(intrus));
-
-        assertThrows(AccesRefuseException.class, () -> invitationService.rejoindre("jeton"));
-        verifyNoInteractions(notificationService);
     }
 }

@@ -629,8 +629,6 @@ Le développement suit un planning en 8 phases.
   heure, les rappels de ce jour-là ne partent pas (pas de rattrapage).
 - Une invitation individuelle ne peut pas être annulée avant ses 7 jours ; le statut `EXPIRE` de
   l'enum n'est jamais écrit (l'expiration est jugée sur la date).
-- `rejoindre` duplique la création d'une participation de `ParticipationService` (deux usages :
-  factorisation repoussée au troisième).
 - Le journal ne connaît pas le **mode de paiement** des gains, des prêts et des remboursements :
   `tirerAuSort` ne reçoit pas de corps et `VersementDTO` / `DemandePretDTO` n'ont que le montant.
   Seuls les paiements de cotisation ont leur mode et leur référence.
@@ -914,7 +912,8 @@ reste lisible.
   créé un compte avant d'être refusée (des comptes qui ne participent à rien).
 - **Les règles d'inscription sont écrites une seule fois.** L'import était leur troisième usage
   (après l'ajout par la gestionnaire et l'arrivée par un lien) : elles ont été regroupées dans
-  `ParticipationService.inscrire` (règle de trois).
+  `ParticipationService.inscrire` (règle de trois), que les trois voies appellent — l'arrivée par
+  un lien (`rejoindre`) y a été branchée en dernier, sa copie des règles supprimée.
 - **Un rapport d'import ne s'écrit pas à la main.** Comme une notification, c'est une trace
   produite par le serveur : le CRUD générique (`POST`/`PUT`/`DELETE /importMembre`) a été
   supprimé, il laissait le client inventer `nbImportes` et `nbErreurs`.

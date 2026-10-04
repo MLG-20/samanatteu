@@ -1,8 +1,6 @@
 package com.samanatteu.service.onboarding;
 
 import java.security.SecureRandom;
-import java.sql.Date;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -14,12 +12,10 @@ import com.samanatteu.dto.onboarding.DemandeInvitationDTO;
 import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.onboarding.LienInvitationDTO;
 import com.samanatteu.entity.onboarding.Invitation;
-import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.onboarding.StatutInvitation;
 import com.samanatteu.enums.onboarding.TypeInvitation;
-import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.onboarding.InvitationAnnuleeException;
@@ -27,37 +23,32 @@ import com.samanatteu.exception.onboarding.InvitationDejaUtiliseeException;
 import com.samanatteu.exception.onboarding.InvitationExpireeException;
 import com.samanatteu.exception.onboarding.InvitationIntrouvableException;
 import com.samanatteu.exception.tontine.InscriptionsFermeesException;
-import com.samanatteu.exception.tontine.ParticipationDejaExistanteException;
 import com.samanatteu.exception.tontine.TontineIntrouvableException;
 import com.samanatteu.repository.onboarding.InvitationRepository;
-import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
-import com.samanatteu.service.notification.NotificationService;
+import com.samanatteu.service.tontine.ParticipationService;
 
 @Service
 public class InvitationService {
     private final InvitationRepository invitationRepository;
     private final TontineRepository tontineRepository;
     private final UtilisateurConnecte utilisateurConnecte;
-    private final ParticipationRepository participationRepository;
     private final UtilisateurRepository utilisateurRepository;
-    private final NotificationService notificationService;
+    private final ParticipationService participationService;
     // SecureRandom et pas Random : un token d'invitation donne accès à une
     // tontine, il ne doit pas pouvoir être prédit (même raison que le tirage).
     private final SecureRandom hasard = new SecureRandom();
 
     public InvitationService(InvitationRepository invitationRepository, TontineRepository tontineRepository,
-            UtilisateurConnecte utilisateurConnect, ParticipationRepository participationRepository,
-            UtilisateurRepository utilisateurRepository, NotificationService notificationService) {
+            UtilisateurConnecte utilisateurConnect, UtilisateurRepository utilisateurRepository,
+            ParticipationService participationService) {
         this.invitationRepository = invitationRepository;
         this.tontineRepository = tontineRepository;
         this.utilisateurConnecte = utilisateurConnect;
-        this.participationRepository = participationRepository;
         this.utilisateurRepository = utilisateurRepository;
-        this.notificationService = notificationService;
-
+        this.participationService = participationService;
     }
 
     // Filtrée par gestionnaire : les tokens sont des clés d'accès, jamais visibles d'un autre.
@@ -177,25 +168,12 @@ public class InvitationService {
         if (invitation.getTelephone() != null && !invitation.getTelephone().equals(membre.getTelephone())) {
             throw new AccesRefuseException();
         }
-        if (participationRepository.existsByMembreIdAndTontineId(membre.getId(), tontine.getId())) {
-            throw new ParticipationDejaExistanteException();
-        }
 
-        // Mêmes règles que ParticipationService.createParticipation (doublon assumé : 2 usages,
-        // règle de trois). Lien de groupe : 1 part, la gestionnaire ajuste ensuite.
-        Participation participation = new Participation();
-        participation.setTontine(tontine);
-        participation.setMembre(membre);
-        participation.setNombreParts(invitation.getNombreParts() != null ? invitation.getNombreParts() : 1);
-        participation.setStatut(StatutParticipation.ACTIF);
-        participation.setDateAdhesion(Date.valueOf(LocalDate.now()));
-        participation.setOrdreInscription(participationRepository
-                .findFirstByTontineIdOrderByOrdreInscriptionDesc(tontine.getId())
-                .map(derniere -> derniere.getOrdreInscription() + 1)
-                .orElse(1));
-        participationRepository.save(participation);
-        // Même message de bienvenue que l'inscription par la gestionnaire.
-        notificationService.notifierBienvenue(participation);
+        // Les règles d'inscription (doublon, parts, ordre, SMS de bienvenue) sont écrites
+        // une seule fois, dans ParticipationService.inscrire. Lien de groupe : 1 part,
+        // la gestionnaire ajuste ensuite.
+        participationService.inscrire(tontine, membre,
+                invitation.getNombreParts() != null ? invitation.getNombreParts() : 1);
 
         // Usage unique pour l'individuelle ; le lien de groupe reste valable pour les autres.
         if (invitation.getType() == TypeInvitation.INDIVIDUELLE) {
