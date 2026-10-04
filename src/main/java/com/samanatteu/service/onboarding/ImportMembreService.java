@@ -4,11 +4,17 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -73,7 +79,15 @@ public class ImportMembreService {
             throw new InscriptionsFermeesException(tontine.getStatut().toString());
         }
 
-        List<String[]> lignes = lireLignes(fichier);
+        // Le lecteur est choisi d'après l'extension ; tout ce qui n'est pas .xlsx est
+        // lu comme un CSV. Le nom peut être null (client qui n'en envoie pas).
+        List<String[]> lignes;
+        String nom = fichier.getOriginalFilename();
+        if (nom != null && nom.toLowerCase().endsWith(".xlsx")) {
+            lignes = lireLignesExcel(fichier);
+        } else {
+            lignes = lireLignes(fichier);
+        }
 
         // 0 ligne (fichier vide) ou 1 ligne (en-tête seul) : rien à importer.
         if (lignes.size() < 2) {
@@ -82,6 +96,7 @@ public class ImportMembreService {
 
         int nbErreurs = 0;
         int nbImport = 0;
+        int nbVides = 0;
         StringBuilder detail = new StringBuilder();
 
         Set<String> telephoneVus = new HashSet<>();
@@ -91,6 +106,12 @@ public class ImportMembreService {
         // i + 1 = son numéro tel qu'on le voit dans un tableur.
         for (int i = 1; i < lignes.size(); i++) {
             String[] ligne = lignes.get(i);
+            // Ligne vide : ni importée ni signalée. continue passe au tour suivant
+            // sans exécuter la suite ; elle garde son numéro, seul le total change.
+            if (estVide(ligne)) {
+                nbVides++;
+                continue;
+            }
             String erreur = verifierLigne(ligne);
             // Doublon dans le fichier : add() répond false si le téléphone a déjà été vu.
             // Placé avant le comptage, pour que le doublon soit compté comme les autres erreurs.
@@ -116,13 +137,21 @@ public class ImportMembreService {
 
         }
 
+        // Calculé après la boucle : avant, nbVides vaudrait encore 0.
+        // - 1 : la première ligne est l'en-tête (nom,prenom,…), pas un membre.
+        // - nbVides : une ligne vide est de la mise en page, pas un membre raté.
+        // 0 = en-tête suivi seulement de lignes vides : même refus qu'un fichier vide.
+        int nbMembres = lignes.size() - 1 - nbVides;
+        if (nbMembres == 0) {
+            throw new FichierVideException();
+        }
+
         // Le rapport est rempli par le serveur à partir de ce qu'il a compté :
         // le client ne fournit que le fichier.
         ImportMembre importMembre = new ImportMembre();
         importMembre.setTontine(tontine);
         importMembre.setFichierNom(fichier.getOriginalFilename());
-        // - 1 : la première ligne est l'en-tête (nom,prenom,…), pas un membre.
-        importMembre.setNbMembresTotal(lignes.size() - 1);
+        importMembre.setNbMembresTotal(nbMembres);
         importMembre.setNbImportes(nbImport);
         importMembre.setNbErreurs(nbErreurs);
         importMembre.setErreursDetail(detail.toString());
@@ -153,8 +182,44 @@ public class ImportMembreService {
         }
     }
 
-    // Décision A : compte existant réutilisé tel quel ; sinon compte MEMBRE créé sans mot de
-    // passe (colonne null) : personne ne peut s'y connecter tant que le membre ne l'a pas choisi.
+    // Même résultat que lireLignes (une liste de lignes découpées en cases), pour que
+    // le reste de l'import ne sache pas si le fichier était un CSV ou un Excel.
+    // Le classeur est fermé par le try-with-resources ; getSheetAt(0) = 1re feuille.
+    private List<String[]> lireLignesExcel(MultipartFile fichier) {
+        try (Workbook classeur = new XSSFWorkbook(fichier.getInputStream())) {
+            Sheet feuille = classeur.getSheetAt(0);
+            List<String[]> lignes = new ArrayList<>();
+
+            // Rend le texte d'une case tel qu'Excel l'affiche : sans lui, un téléphone
+            // (stocké comme un nombre) sortirait en 7.71234566E8. Case vide = "".
+            DataFormatter formateur = new DataFormatter();
+
+            // Parcours par numéro et non par for-each : Excel n'enregistre pas une ligne
+            // vide, un for-each la sauterait et décalerait les numéros du rapport.
+            // La ligne vide garde donc sa place, sous forme d'un tableau sans case.
+            for (int i = 0; i <= feuille.getLastRowNum(); i++) {
+                Row rangee = feuille.getRow(i);
+                if (rangee == null || rangee.getLastCellNum() < 0) {
+                    lignes.add(new String[0]);
+                } else {
+                    String[] cases = new String[rangee.getLastCellNum()];
+                    for (int j = 0; j < cases.length; j++) {
+                        cases[j] = formateur.formatCellValue(rangee.getCell(j));
+                    }
+                    lignes.add(cases);
+                }
+            }
+            return lignes;
+        } catch (IOException | RuntimeException e) {
+            // RuntimeException : POI signale un faux .xlsx par des exceptions non
+            // vérifiées ; sans ce catch, un mauvais fichier donnerait un 500.
+            throw new FichierIllisibleException();
+        }
+    }
+
+    // Compte existant réutilisé tel quel ; sinon compte MEMBRE créé sans mot de passe
+    // (colonne null) : personne ne peut s'y connecter tant que le membre ne l'a pas choisi.
+    // Choix expliqué dans le journal des décisions du README.
     private Utilisateur trouverOuCreerMembre(String[] ligne) {
         Optional<Utilisateur> existant = utilisateurRepository.findByTelephone(ligne[2]);
         if (existant.isPresent()) {
@@ -206,6 +271,17 @@ public class ImportMembreService {
         }
 
         return null;
+    }
+
+    // Vide = aucune case ne contient de texte. Une seule règle pour les trois
+    // formes possibles : tableau sans case, [""] et ["", "", ""].
+    private boolean estVide(String[] ligne) {
+        for (String valeur : ligne) {
+            if (!valeur.isBlank()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // Colonne parts optionnelle : absente ou vide = 1 part. parseInt est sûr ici,
