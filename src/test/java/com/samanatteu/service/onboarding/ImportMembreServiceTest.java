@@ -13,10 +13,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -105,6 +112,36 @@ class ImportMembreServiceTest {
                 contenu.getBytes(StandardCharsets.UTF_8));
     }
 
+    // Classeur Excel fabriqué en mémoire. Chaque tableau est une ligne ; null = ligne
+    // absente du fichier (ce qu'Excel fait d'une ligne vide). Un nombre devient une
+    // case numérique, comme un téléphone saisi dans un tableur.
+    private MockMultipartFile xlsx(String nomFichier, Object[]... lignes) {
+        try (Workbook classeur = new XSSFWorkbook();
+                ByteArrayOutputStream octets = new ByteArrayOutputStream()) {
+            Sheet feuille = classeur.createSheet();
+            for (int i = 0; i < lignes.length; i++) {
+                if (lignes[i] == null) {
+                    continue;
+                }
+                Row rangee = feuille.createRow(i);
+                for (int j = 0; j < lignes[i].length; j++) {
+                    if (lignes[i][j] instanceof Number nombre) {
+                        rangee.createCell(j).setCellValue(nombre.doubleValue());
+                    } else {
+                        rangee.createCell(j).setCellValue((String) lignes[i][j]);
+                    }
+                }
+            }
+            classeur.write(octets);
+            return new MockMultipartFile("fichier", nomFichier,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", octets.toByteArray());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static final Object[] EN_TETE_EXCEL = { "nom", "prenom", "telephone", "email", "parts" };
+
     // Cas courant : la gestionnaire 770000101 importe dans SA tontine 6, encore EN_ATTENTE.
     // Les faux repositories « enregistrent » en renvoyant l'objet reçu.
     private Tontine preparerImportAutorise() {
@@ -157,9 +194,11 @@ class ImportMembreServiceTest {
 
     // ------------------------------------------------------- fichier inutilisable
 
-    // Fichier vide, ou en-tête seul : aucun rapport enregistré (pas de « -1 membre »).
+    // Fichier vide, en-tête seul, ou en-tête suivi seulement de lignes vides :
+    // aucun rapport enregistré (pas de « -1 membre » ni de « 0 membre »).
     @ParameterizedTest
-    @ValueSource(strings = { "", "nom,prenom,telephone,email,parts\n" })
+    @ValueSource(strings = { "", "nom,prenom,telephone,email,parts\n",
+            "nom,prenom,telephone,email,parts\n\n\n" })
     void importer_fichierSansMembre_donneFichierVide(String contenu) {
         connecter("770000101");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
@@ -356,6 +395,100 @@ class ImportMembreServiceTest {
         assertEquals(1, rapport.getNbImportes());
         assertTrue(rapport.getErreursDetail().isEmpty());
         verify(participationService).inscrire(eq(tontine), any(), eq(1));
+    }
+
+    // --------------------------------------------------------------- lignes vides
+
+    // Une ligne vide est de la mise en page : ni importée, ni signalée, ni comptée
+    // dans le total. La ligne suivante garde son numéro de tableur (4, pas 3).
+    @Test
+    void importer_csvAvecLigneVide_lIgnoreSansDecalerLesNumeros() {
+        preparerImportAutorise();
+        when(utilisateurRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ImportMembreDTO rapport = importMembreService.importer(6L,
+                csv(EN_TETE + "Ba,Aissatou,771110010,,1\n\nFall,Khady,77111,,1\n"));
+
+        assertEquals(2, rapport.getNbMembresTotal());
+        assertEquals(1, rapport.getNbImportes());
+        assertEquals(1, rapport.getNbErreurs());
+        assertEquals("Ligne 4 : telephone invalide (9 chiffres commençant par 7)\n", rapport.getErreursDetail());
+    }
+
+    // ---------------------------------------------------------------------- Excel
+
+    // Dans Excel le téléphone et les parts sont des NOMBRES : lus sans DataFormatter,
+    // ils sortiraient en 7.71110001E8 et 2.0, et la ligne serait refusée.
+    @ParameterizedTest
+    @ValueSource(strings = { "membres.xlsx", "MEMBRES.XLSX" })
+    void importer_excel_litLesCasesNumeriquesCommeDuTexte(String nomFichier) {
+        Tontine tontine = preparerImportAutorise();
+        when(utilisateurRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ImportMembreDTO rapport = importMembreService.importer(6L, xlsx(nomFichier,
+                EN_TETE_EXCEL,
+                new Object[] { "Diop", "Awa", 771110001, "awa.diop@example.com", 2 },
+                new Object[] { "Ndiaye", "Fatou", "771110002" }));
+
+        assertEquals(2, rapport.getNbMembresTotal());
+        assertEquals(2, rapport.getNbImportes());
+        assertTrue(rapport.getErreursDetail().isEmpty());
+        assertEquals(nomFichier, rapport.getFichierNom());
+
+        ArgumentCaptor<Utilisateur> membres = ArgumentCaptor.forClass(Utilisateur.class);
+        ArgumentCaptor<Integer> parts = ArgumentCaptor.forClass(Integer.class);
+        verify(participationService, times(2)).inscrire(eq(tontine), membres.capture(), parts.capture());
+        assertEquals(List.of(2, 1), parts.getAllValues());
+        assertEquals(List.of("771110001", "771110002"),
+                membres.getAllValues().stream().map(Utilisateur::getTelephone).toList());
+    }
+
+    // Excel n'enregistre pas une ligne vide (null ici) : lue par for-each, elle serait
+    // sautée et Khady serait annoncée en ligne 4. Une ligne aux cases toutes vides
+    // (effacée mais encore mise en forme) est ignorée de la même façon.
+    @Test
+    void importer_excelAvecLignesVides_lesIgnoreSansDecalerLesNumeros() {
+        preparerImportAutorise();
+        when(utilisateurRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ImportMembreDTO rapport = importMembreService.importer(6L, xlsx("trous.xlsx",
+                EN_TETE_EXCEL,
+                new Object[] { "Ba", "Aissatou", 771110010, "", 1 },
+                null,
+                new Object[] { "", "", "" },
+                new Object[] { "Fall", "Khady", 77111, "", 1 }));
+
+        assertEquals(2, rapport.getNbMembresTotal());
+        assertEquals(1, rapport.getNbImportes());
+        assertEquals(1, rapport.getNbErreurs());
+        assertEquals("Ligne 5 : telephone invalide (9 chiffres commençant par 7)\n", rapport.getErreursDetail());
+    }
+
+    // En-tête suivi seulement de lignes vides : même refus qu'un fichier vide.
+    @Test
+    void importer_excelSansMembre_donneFichierVide() {
+        connecter("770000101");
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
+
+        assertThrows(FichierVideException.class, () -> importMembreService.importer(6L,
+                xlsx("vide.xlsx", EN_TETE_EXCEL, null, new Object[] { "", "", "" })));
+
+        verify(importMembreRepository, never()).save(any());
+    }
+
+    // Un fichier texte renommé en .xlsx : POI lance une exception NON vérifiée, qui
+    // doit devenir un 400 lisible et non un 500.
+    @Test
+    void importer_fauxExcel_donneFichierIllisible() {
+        connecter("770000101");
+        when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
+        MockMultipartFile faux = new MockMultipartFile("fichier", "faux.xlsx", "text/csv",
+                (EN_TETE + "Diop,Awa,771110001,,1\n").getBytes(StandardCharsets.UTF_8));
+
+        assertThrows(FichierIllisibleException.class, () -> importMembreService.importer(6L, faux));
+
+        verifyNoInteractions(utilisateurRepository, participationService);
+        verify(importMembreRepository, never()).save(any());
     }
 
     // ------------------------------------------------------------------- lecture
