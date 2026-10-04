@@ -157,6 +157,8 @@ class MotDePasseOublieServiceTest {
         verify(utilisateurRepository).save(utilisateur);
         assertTrue(code.isUtilise());
         verify(codeReinitialisationRepository).save(code);
+        // Nouveau mot de passe = sessions ouvertes fermées (numéro de version + 1).
+        assertEquals(1, utilisateur.getVersionSessions());
     }
 
     // L'essai raté est compté ET enregistré : c'est ce compteur qui bloque celui
@@ -174,6 +176,7 @@ class MotDePasseOublieServiceTest {
         verify(codeReinitialisationRepository).save(code);
         assertFalse(code.isUtilise());
         assertNull(utilisateur.getMotDePasse());
+        assertEquals(0, utilisateur.getVersionSessions());
         verify(utilisateurRepository, never()).save(any());
     }
 

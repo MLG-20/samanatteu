@@ -28,7 +28,7 @@ import com.samanatteu.service.auth.AuthService;
 import com.samanatteu.service.auth.MotDePasseOublieService;
 
 // Règles d'ACCÈS sur les routes de mot de passe.
-// - /auth/mot-de-passe : il faut être connecté, quel que soit le rôle (pas de règle
+// - /auth/mot-de-passe et /auth/deconnexion : il faut être connecté, quel que soit le rôle (pas de règle
 //   propre, la route tombe sous anyRequest().authenticated()).
 // - /auth/mot-de-passe-oublie et /auth/reinitialiser-mot-de-passe : publiques, celui
 //   qui a oublié son mot de passe n'a pas de token.
@@ -162,5 +162,25 @@ class AuthControllerSecurityTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(motDePasseOublieService);
+    }
+
+    // -------------------------------------------------------------- déconnexion
+
+    // Pour se déconnecter il faut être connecté : la route n'est pas publique.
+    @Test
+    void deconnecter_sansToken_donne401() throws Exception {
+        mockMvc.perform(post("/auth/deconnexion"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(authService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "MEMBRE", "GESTIONNAIRE", "ADMIN" })
+    void deconnecter_connecte_donne204(String role) throws Exception {
+        mockMvc.perform(post("/auth/deconnexion").with(user("771234566").roles(role)))
+                .andExpect(status().isNoContent());
+
+        verify(authService).deconnecter();
     }
 }
