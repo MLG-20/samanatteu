@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -20,11 +21,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.samanatteu.config.SecurityConfig;
+import com.samanatteu.dto.onboarding.ImportMembreDTO;
 import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.pret.PretDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
@@ -32,6 +35,7 @@ import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.security.JwtAccessDeniedHandler;
 import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
+import com.samanatteu.service.onboarding.ImportMembreService;
 import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.service.pret.PretService;
 import com.samanatteu.service.tontine.CycleService;
@@ -71,6 +75,10 @@ class TontineControllerSecurityTest {
 
     // JwtAuthFilter a besoin d'un JwtUtil pour se construire. On le remplace par un faux : dans ces tests
     // on n'envoie jamais de vrai token, l'utilisateur est simulé par @WithMockUser.
+    // Injecté dans TontineController pour POST /tontine/{id}/import.
+    @MockitoBean
+    private ImportMembreService importMembreService;
+
     @MockitoBean
     private JwtUtil jwtUtil;
 
@@ -376,5 +384,57 @@ class TontineControllerSecurityTest {
                 .andExpect(status().isBadRequest());
 
         verify(invitationService, never()).genererInvitationIndividuelle(any(), any());
+    }
+
+    // ------------------------------------------------- POST /tontine/{id}/import
+
+    // Fichier envoyé en multipart/form-data, dans la partie nommée « fichier ».
+    private static final MockMultipartFile FICHIER = new MockMultipartFile(
+            "fichier", "membres.csv", "text/csv",
+            "nom,prenom,telephone\nDiop,Awa,771110001\n".getBytes());
+
+    @Test
+    void import_sansToken_donne401() throws Exception {
+        mockMvc.perform(multipart("/tontine/6/import").file(FICHIER))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "771234566", roles = "MEMBRE")
+    void import_parUnMembre_donne403() throws Exception {
+        mockMvc.perform(multipart("/tontine/6/import").file(FICHIER))
+                .andExpect(status().isForbidden());
+
+        verify(importMembreService, never()).importer(any(), any());
+    }
+
+    @Test
+    @WithMockUser(username = "770000099", roles = "ADMIN")
+    void import_parUnAdmin_donne403() throws Exception {
+        mockMvc.perform(multipart("/tontine/6/import").file(FICHIER))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void import_parUnGestionnaire_donne200() throws Exception {
+        when(importMembreService.importer(eq(6L), any())).thenReturn(new ImportMembreDTO());
+
+        mockMvc.perform(multipart("/tontine/6/import").file(FICHIER))
+                .andExpect(status().isOk());
+
+        verify(importMembreService).importer(eq(6L), any());
+    }
+
+    // La partie doit s'appeler « fichier » : sinon 400, sans appeler le service.
+    @Test
+    @WithMockUser(username = "770000101", roles = "GESTIONNAIRE")
+    void import_sansPartieFichier_donne400() throws Exception {
+        MockMultipartFile mauvaisNom = new MockMultipartFile("autre", "membres.csv", "text/csv", "x".getBytes());
+
+        mockMvc.perform(multipart("/tontine/6/import").file(mauvaisNom))
+                .andExpect(status().isBadRequest());
+
+        verify(importMembreService, never()).importer(any(), any());
     }
 }
