@@ -91,6 +91,9 @@ public class MotDePasseOublieService {
         codeReinitialisationRepository.save(codeReinitialisation);
 
         utilisateur.setMotDePasse(passwordEncoder.encode(dto.getNouveauMotDePasse()));
+        // Nouveau mot de passe = sessions ouvertes fermées (voir AuthService.deconnecter).
+        utilisateur.setVersionSessions(utilisateur.getVersionSessions() + 1);
+
         utilisateurRepository.save(utilisateur);
 
     }

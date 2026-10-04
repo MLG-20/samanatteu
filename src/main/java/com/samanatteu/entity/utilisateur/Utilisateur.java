@@ -58,6 +58,11 @@ public class Utilisateur {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // Écrit dans chaque refresh token. L'augmenter de 1 (déconnexion, nouveau
+    // mot de passe) rend inutilisables tous les tokens fabriqués avant.
+    @Column(name = "version_sessions")
+    private int versionSessions;
+
     // Côté inverse de Tontine.gestionnaire : pas de colonne ici, la clé étrangère
     // gestionnaire_id est dans la table tontine.
     @OneToMany(mappedBy = "gestionnaire")

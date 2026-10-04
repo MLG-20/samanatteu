@@ -52,6 +52,9 @@ public class JwtUtil {
                 // Marque le token comme "refresh" pour qu'il ne soit pas confondu avec
                 // un access token.
                 .claim("type", "refresh")
+                // Numéro de version du compte au moment de la fabrication : comparé à
+                // celui de la base lors du refresh, pour refuser un token révoqué.
+                .claim("version", utilisateur.getVersionSessions())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
                 .signWith(key)
@@ -86,4 +89,15 @@ public class JwtUtil {
                 .getPayload()
                 .get("type", String.class);
     }
+
+    // Integer et non int : un token fabriqué avant l'ajout de ce claim renvoie null.
+    public Integer extractVersion(String token) {
+        return Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .get("version", Integer.class);
+    }
+
 }

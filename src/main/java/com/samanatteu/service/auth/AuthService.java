@@ -55,9 +55,11 @@ public class AuthService {
     public TokenDTO refresh(RefreshRequestDTO refreshRequestDTO) {
         String telephone;
         String type;
+        Integer version;
         try {
             telephone = jwtUtil.extractTelephone(refreshRequestDTO.getRefreshToken());
             type = jwtUtil.extractType(refreshRequestDTO.getRefreshToken());
+            version = jwtUtil.extractVersion(refreshRequestDTO.getRefreshToken());
         } catch (io.jsonwebtoken.JwtException e) {
             throw new RefreshTokenInvalideException();
         }
@@ -68,6 +70,12 @@ public class AuthService {
 
         Utilisateur utilisateur = utilisateurRepository.findByTelephone(telephone)
                 .orElseThrow(() -> new RefreshTokenInvalideException());
+
+        // Token fabriqué avant une déconnexion ou un changement de mot de passe :
+        // son numéro n'est plus celui du compte. null testé en premier (ancien token).
+        if (version == null || version != utilisateur.getVersionSessions()) {
+            throw new RefreshTokenInvalideException();
+        }
 
         String accessToken = jwtUtil.generateToken(utilisateur);
         String newRefreshToken = jwtUtil.generateRefreshToken(utilisateur);
@@ -87,6 +95,20 @@ public class AuthService {
 
         // Jamais de mot de passe en clair en base : on enregistre son hachage.
         utilisateur.setMotDePasse(passwordEncoder.encode(dto.getNouveauMotDePasse()));
+        // Ferme aussi les sessions ouvertes : celui qui change de mot de passe parce
+        // qu'il se croit piraté met le pirate dehors.
+        utilisateur.setVersionSessions(utilisateur.getVersionSessions() + 1);
+
+        utilisateurRepository.save(utilisateur);
+    }
+
+    // Un JWT ne peut pas être annulé un par un : on change le numéro de version du
+    // compte, ce qui périme tous ses refresh tokens (tous ses appareils à la fois).
+    public void deconnecter() {
+        Utilisateur utilisateur = utilisateurRepository.findByTelephone(utilisateurConnecte.telephone())
+                .orElseThrow(() -> new AccesRefuseException());
+
+        utilisateur.setVersionSessions(utilisateur.getVersionSessions() + 1);
         utilisateurRepository.save(utilisateur);
     }
 

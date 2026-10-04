@@ -61,4 +61,11 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
+    // Pas de corps : le token dit déjà qui se déconnecte.
+    @PostMapping("/deconnexion")
+    public ResponseEntity<Void> deconnecter() {
+        authService.deconnecter();
+        return ResponseEntity.noContent().build();
+    }
+
 }
