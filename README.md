@@ -6,7 +6,7 @@ cycles, les cotisations, les tirages et les prêts.
 
 > **État du projet : en développement actif.** Authentification, tontines, participations,
 > cycles et cotisations, tirages, caisse de prêts, prêts, journal financier, invitations et
-> notifications (envoi simulé) sont fonctionnels et testés ; l'import de membres par CSV est fonctionnel et testé ; import Excel et tableaux de bord restent à faire. Voir
+> notifications (envoi simulé) sont fonctionnels et testés ; l'import de membres par fichier CSV ou Excel est fonctionnel et testé ; les tableaux de bord restent à faire. Voir
 > [Avancement](#avancement).
 
 ## Sommaire
@@ -36,6 +36,7 @@ cycles, les cotisations, les tirages et les prêts.
 - Spring Security + **JWT** ([jjwt](https://github.com/jwtk/jjwt) 0.12.6), mots de passe hachés en BCrypt
 - **PostgreSQL**, schéma versionné avec **Flyway** (12.4)
 - Lombok
+- Import de fichiers : [OpenCSV](https://opencsv.sourceforge.net/) 5.9 (CSV), [Apache POI](https://poi.apache.org/) 5.4.1 (Excel `.xlsx`)
 - Tests : JUnit 5, Mockito, MockMvc, Spring Security Test
 
 ## Démarrage rapide
@@ -369,7 +370,7 @@ tard.
 consistera à écrire une classe de plus, sans toucher aux services (voir
 [Architecture](#architecture)).
 
-### Import de membres par fichier CSV (implémenté, testé)
+### Import de membres par fichier CSV ou Excel (implémenté, testé)
 
 La gestionnaire inscrit ses membres en une fois à partir d'un fichier (CDC v1.1 §4.8 :
 « 300 membres en quelques minutes »).
@@ -379,8 +380,10 @@ La gestionnaire inscrit ses membres en une fois à partir d'un fichier (CDC v1.1
 | `POST` | `/tontine/{id}/import` | `GESTIONNAIRE` propriétaire | importe le fichier envoyé en `multipart/form-data`, partie `fichier` |
 | `GET` | `/importMembre` | `GESTIONNAIRE` | **ses propres** rapports d'import, du plus récent au plus ancien |
 
-Le fichier a une ligne d'en-tête puis une ligne par membre. `email` et `parts` sont optionnels
-(1 part par défaut) ; un exemple est fourni dans [`exemples/membres.csv`](exemples/membres.csv).
+Le fichier est un **CSV** ou un classeur **Excel `.xlsx`** (première feuille), reconnu à son
+extension. Il a une ligne d'en-tête puis une ligne par membre. `email` et `parts` sont optionnels
+(1 part par défaut) ; deux exemples au même contenu sont fournis :
+[`exemples/membres.csv`](exemples/membres.csv) et [`exemples/membres.xlsx`](exemples/membres.xlsx).
 
 ```csv
 nom,prenom,telephone,email,parts
@@ -415,6 +418,10 @@ rapport avec leur numéro de ligne (celui du tableur) :
   compte `MEMBRE` est créé **sans mot de passe** (personne ne peut s'y connecter tant que le membre
   ne l'a pas choisi) ; puis le membre est inscrit avec les mêmes règles que les autres voies
   d'inscription, et reçoit le SMS de bienvenue.
+- Une **ligne vide** n'est ni importée, ni signalée, ni comptée dans `nbMembresTotal` ; les
+  lignes suivantes gardent leur numéro de tableur.
+- Dans un classeur Excel, un téléphone ou un nombre de parts saisi comme un **nombre** est lu tel
+  qu'il s'affiche (`771110001`, pas `7.71110001E8`).
 - `statut` vaut `TERMINE` si au moins une ligne est passée, `ECHEC` sinon.
 - L'import entier est refusé, sans rien créer, si la tontine n'est plus `EN_ATTENTE` (`409`), si
   le fichier est illisible ou ne contient aucun membre (`400`).
@@ -561,7 +568,9 @@ private String genererToken() {
   notifications (déclenchées par chaque action et jamais si elle est refusée ; SMS seul ou SMS +
   email, un envoi raté n'interrompt rien ; rappels J-3, reste dû et date, montants sans centimes),
   import de fichier (import partiel, motif et numéro de chaque ligne refusée, compte réutilisé ou
-  créé sans mot de passe, parts lues ou 1 par défaut, aucun compte créé si l'import est refusé). Le hasard du tirage est remplacé par un faux `Random` qui
+  créé sans mot de passe, parts lues ou 1 par défaut, aucun compte créé si l'import est refusé,
+  classeur Excel fabriqué en mémoire : cases numériques lues comme du texte, lignes vides ignorées
+  sans décaler les numéros, faux `.xlsx` refusé en `400`). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
@@ -598,12 +607,13 @@ Le développement suit un planning en 8 phases.
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
-| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé), import de membres par CSV ; reste l'import Excel, le branchement d'un vrai fournisseur et « mot de passe oublié » |
+| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur et « mot de passe oublié » |
 | 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
 
 ### Limites connues
 
-- L'import ne lit que le **CSV** ; le format Excel (`.xlsx`) reste à faire.
+- L'import Excel ne lit que le format `.xlsx` et la **première feuille** du classeur ; l'ancien
+  format `.xls` n'est pas pris en charge.
 - Un compte créé par l'import reste inutilisable tant que « mot de passe oublié » n'existe pas.
 - L'import n'est pas transactionnel : s'il est interrompu au milieu (panne), les lignes déjà
   traitées restent importées sans rapport enregistré ; le relancer est sans danger (les membres
@@ -908,9 +918,28 @@ reste lisible.
 - **Un rapport d'import ne s'écrit pas à la main.** Comme une notification, c'est une trace
   produite par le serveur : le CRUD générique (`POST`/`PUT`/`DELETE /importMembre`) a été
   supprimé, il laissait le client inventer `nbImportes` et `nbErreurs`.
+- **Excel et CSV partagent tout sauf la lecture.** Le lecteur Excel (Apache POI) rend la même
+  liste de lignes découpées en cases que le lecteur CSV : contrôles, création des comptes,
+  inscription et rapport ne savent pas d'où vient le fichier. Ajouter un format = écrire un
+  lecteur.
+- **Une ligne vide n'est pas une erreur.** C'est de la mise en page (une gestionnaire aère son
+  fichier) : elle est ignorée et ne compte pas dans le total, au lieu de remplir le rapport de
+  « colonnes manquantes ». Elle garde pourtant sa place dans la numérotation, pour que le numéro
+  annoncé reste celui que la gestionnaire voit dans son tableur.
 
 ### Bugs trouvés et corrigés
 
+- **Un fichier texte renommé en `.xlsx` faisait répondre `500`.** Le lecteur Excel n'attrapait
+  que `IOException` ; or Apache POI signale un faux classeur par une exception *non vérifiée*
+  (`NotOfficeXmlFileException`), que le compilateur n'oblige pas à prévoir. Elle remontait jusqu'au
+  gestionnaire d'erreurs global : « erreur inattendue », comme si le serveur avait un bug, alors
+  que la faute est dans le fichier envoyé. Toute erreur de lecture du classeur donne maintenant
+  un `400` « fichier illisible ». Trouvé en envoyant exprès un CSV renommé.
+- **Une ligne vide dans un classeur Excel décalait les numéros du rapport.** Excel n'enregistre
+  pas une ligne entièrement vide, et le parcours « ligne par ligne » de POI ne rend que les
+  lignes enregistrées : une erreur en ligne 4 était annoncée « Ligne 3 », la gestionnaire serait
+  allée corriger la mauvaise ligne. La feuille est maintenant parcourue par numéro de ligne, une
+  ligne absente gardant sa place.
 - **N'importe quel utilisateur connecté pouvait écrire et lire tous les rapports d'import.**
   `/importMembre` n'avait aucune règle dans `SecurityConfig` et exposait un CRUD générique : un
   `MEMBRE` pouvait fabriquer un rapport en choisissant lui-même les compteurs, modifier ou effacer
