@@ -117,6 +117,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 |---|---|---|---|
 | `POST` | `/auth/login` | public | connexion par **email ou téléphone** |
 | `POST` | `/auth/refresh` | public | échange un refresh token contre une nouvelle paire de tokens |
+| `PUT` | `/auth/mot-de-passe` | connecté | changer **son propre** mot de passe : `ancienMotDePasse` (preuve d'identité) et `nouveauMotDePasse` (8 caractères au moins) ; `204`, ou `400` si l'ancien est faux |
 | `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN`) |
 | `GET` | `/utilisateur` | `ADMIN` | liste des utilisateurs |
 | `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou tout profil si `ADMIN`) : `nom`, `prenom`, `email` uniquement |
@@ -556,7 +557,7 @@ private String genererToken() {
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
   `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest`,
-  `ImportMembreServiceTest` :
+  `ImportMembreServiceTest`, `AuthServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
@@ -570,14 +571,15 @@ private String genererToken() {
   import de fichier (import partiel, motif et numéro de chaque ligne refusée, compte réutilisé ou
   créé sans mot de passe, parts lues ou 1 par défaut, aucun compte créé si l'import est refusé,
   classeur Excel fabriqué en mémoire : cases numériques lues comme du texte, lignes vides ignorées
-  sans décaler les numéros, faux `.xlsx` refusé en `400`). Le hasard du tirage est remplacé par un faux `Random` qui
+  sans décaler les numéros, faux `.xlsx` refusé en `400`), changement de mot de passe (ancien
+  exigé, nouveau enregistré haché avec un vrai BCrypt, rien d'enregistré en cas de refus). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
   `TirageControllerSecurityTest`, `PretControllerSecurityTest`,
   `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest`,
   `InvitationControllerSecurityTest`, `NotificationControllerSecurityTest`,
-  `ImportMembreControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `ImportMembreControllerSecurityTest`, `AuthControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -603,7 +605,7 @@ Le développement suit un planning en 8 phases.
 | Phase | Contenu | État |
 |---|---|---|
 | 1 | Bases : projet, entités, base PostgreSQL | ✅ terminée |
-| 2 | Authentification et rôles | ✅ terminée, sauf « mot de passe oublié » (nécessite l'envoi de SMS, phase 6) |
+| 2 | Authentification et rôles | ✅ connexion, tokens, rôles, changement de mot de passe ; reste « mot de passe oublié » (par SMS) et la déconnexion |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
@@ -615,6 +617,9 @@ Le développement suit un planning en 8 phases.
 - L'import Excel ne lit que le format `.xlsx` et la **première feuille** du classeur ; l'ancien
   format `.xls` n'est pas pris en charge.
 - Un compte créé par l'import reste inutilisable tant que « mot de passe oublié » n'existe pas.
+- Changer son mot de passe ne coupe pas les sessions ouvertes : un token émis avant le changement
+  reste accepté jusqu'à son expiration (15 minutes pour l'access token, 7 jours pour le refresh
+  token). La révocation viendra avec la déconnexion.
 - L'import n'est pas transactionnel : s'il est interrompu au milieu (panne), les lignes déjà
   traitées restent importées sans rapport enregistré ; le relancer est sans danger (les membres
   déjà inscrits sont signalés, pas dupliqués).
@@ -917,6 +922,11 @@ reste lisible.
 - **Un rapport d'import ne s'écrit pas à la main.** Comme une notification, c'est une trace
   produite par le serveur : le CRUD générique (`POST`/`PUT`/`DELETE /importMembre`) a été
   supprimé, il laissait le client inventer `nbImportes` et `nbErreurs`.
+- **Changer son mot de passe exige l'ancien, et répond `400` s'il est faux.** Sans cette preuve,
+  quiconque trouve une session ouverte pourrait s'approprier le compte. Le refus est un `400` et
+  non un `401` : l'utilisateur est bien connecté, il s'est trompé dans un champ ; un `401` ferait
+  croire au front-end que la session est perdue et le renverrait à l'écran de connexion. Le compte
+  modifié est toujours celui du token : la route n'a pas d'identifiant.
 - **Excel et CSV partagent tout sauf la lecture.** Le lecteur Excel (Apache POI) rend la même
   liste de lignes découpées en cases que le lecteur CSV : contrôles, création des comptes,
   inscription et rapport ne savent pas d'où vient le fichier. Ajouter un format = écrire un
