@@ -1,15 +1,19 @@
 package com.samanatteu.controller;
 
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.samanatteu.dto.onboarding.DemandeInvitationDTO;
+import com.samanatteu.dto.onboarding.ImportMembreDTO;
 import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.pret.DemandePretDTO;
 import com.samanatteu.dto.pret.PretDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.tontine.Tontine;
+import com.samanatteu.service.onboarding.ImportMembreService;
 import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.service.pret.PretService;
 import com.samanatteu.service.tontine.CycleService;
@@ -35,13 +39,15 @@ public class TontineController {
     private final CycleService cycleService;
     private final PretService pretService;
     private final InvitationService invitationService;
+    private final ImportMembreService importMembreService;
 
     public TontineController(TontineService tontineService, CycleService cycleService,
-            PretService pretService, InvitationService invitationService) {
+            PretService pretService, InvitationService invitationService, ImportMembreService importMembreService) {
         this.tontineService = tontineService;
         this.cycleService = cycleService;
         this.pretService = pretService;
         this.invitationService = invitationService;
+        this.importMembreService = importMembreService;
     }
 
     @GetMapping
@@ -108,6 +114,14 @@ public class TontineController {
     public InvitationDTO genererInvitationIndividuelle(@PathVariable Long id,
             @Valid @RequestBody DemandeInvitationDTO demande) {
         return invitationService.genererInvitationIndividuelle(id, demande);
+    }
+
+    // Un fichier ne voyage pas en JSON mais en multipart/form-data : on lit la
+    // partie nommée « fichier » avec @RequestParam. Sécurité : POST /tontine/**.
+    @PostMapping("/{id}/import")
+    public ImportMembreDTO importerMembres(@PathVariable Long id,
+            @RequestParam("fichier") MultipartFile fichier) {
+        return importMembreService.importer(id, fichier);
     }
 
     @PutMapping("/{id}")

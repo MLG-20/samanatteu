@@ -73,29 +73,37 @@ public class ParticipationService {
 
         Utilisateur membre = utilisateurRepository.findById(participation.getMembre().getId())
                 .orElseThrow(() -> new MembreIntrouvableException());
-        if (participationRepository.existsByMembreIdAndTontineId(
-                participation.getMembre().getId(), tontine.getId())) {
+
+        return convertiParticipationDTO(inscrire(tontine, membre, participation.getNombreParts()));
+    }
+
+    // Les règles d'inscription, écrites une seule fois : utilisées par l'ajout par la
+    // gestionnaire, l'arrivée par un lien d'invitation et l'import de fichier.
+    public Participation inscrire(Tontine tontine, Utilisateur membre, Integer nombreParts) {
+        if (participationRepository.existsByMembreIdAndTontineId(membre.getId(), tontine.getId())) {
             throw new ParticipationDejaExistanteException();
         }
         // Ajouter un participant (ou des parts) après le démarrage fausserait le tirage.
         verifierInscriptionsOuvertes(tontine);
-        verifierNombreParts(participation.getNombreParts());
+        verifierNombreParts(nombreParts);
 
         // Statut, date d'adhésion et ordre d'inscription sont décidés par le serveur.
         // Ordre = dernier + 1 (et non nombre d'inscrits + 1, qui redonnerait un numéro
         // déjà pris après une suppression au milieu).
+        Participation participation = new Participation();
+        participation.setTontine(tontine);
+        participation.setMembre(membre);
+        participation.setNombreParts(nombreParts);
         participation.setStatut(StatutParticipation.ACTIF);
         participation.setDateAdhesion(Date.valueOf(LocalDate.now()));
         participation.setOrdreInscription(
                 participationRepository.findFirstByTontineIdOrderByOrdreInscriptionDesc(tontine.getId())
                         .map(derniere -> derniere.getOrdreInscription() + 1)
                         .orElse(1));
-        participation.setTontine(tontine);
-        participation.setMembre(membre);
         Participation enregistree = participationRepository.save(participation);
         // SMS de bienvenue (CDC §3.8), après le save : rien n'est envoyé si l'inscription échoue.
         notificationService.notifierBienvenue(enregistree);
-        return convertiParticipationDTO(enregistree);
+        return enregistree;
     }
 
     public Optional<ParticipationDTO> updateParticipation(Long id, Participation participationModifier) {
