@@ -118,6 +118,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `POST` | `/auth/login` | public | connexion par **email ou téléphone** |
 | `POST` | `/auth/refresh` | public | échange un refresh token contre une nouvelle paire de tokens |
 | `PUT` | `/auth/mot-de-passe` | connecté | changer **son propre** mot de passe : `ancienMotDePasse` (preuve d'identité) et `nouveauMotDePasse` (8 caractères au moins) ; `204`, ou `400` si l'ancien est faux |
+| `POST` | `/auth/deconnexion` | connecté | ferme **toutes** les sessions du compte : ses refresh tokens déjà émis sont refusés (`204`) |
 | `POST` | `/auth/mot-de-passe-oublie` | public | envoie par SMS un **code à 6 chiffres** valable 10 minutes au `telephone` donné ; répond toujours `204`, que le numéro ait un compte ou non |
 | `POST` | `/auth/reinitialiser-mot-de-passe` | public | choisit un nouveau mot de passe avec `telephone`, `code` et `nouveauMotDePasse` ; `204`, ou `400` « code invalide ou expiré » |
 | `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN`) |
@@ -507,6 +508,10 @@ Choix notables :
 - **Identité prise dans le token, jamais dans le JSON** : le propriétaire d'une tontine créée est
   toujours l'utilisateur connecté, quoi que le client envoie.
 - **Secrets hors du code** : mot de passe de base et secret JWT viennent de variables d'environnement.
+- **Déconnexion et révocation** : un JWT ne peut pas être annulé un par un. Chaque compte porte un
+  **numéro de version** de ses sessions, écrit dans chaque refresh token ; `/auth/refresh` refuse
+  un token dont le numéro n'est plus celui du compte. Se déconnecter, changer ou réinitialiser son
+  mot de passe ajoute 1 à ce numéro et périme d'un coup tous les refresh tokens déjà émis.
 - **Mot de passe oublié** : un code à 6 chiffres tiré avec `SecureRandom`, envoyé par SMS et
   enregistré **haché** (BCrypt, comme un mot de passe), valable 10 minutes, à usage unique, bloqué
   après 5 essais ratés ; seul le dernier code demandé compte. Les réponses ne révèlent jamais si un
@@ -581,7 +586,9 @@ private String genererToken() {
   exigé, nouveau enregistré haché avec un vrai BCrypt, rien d'enregistré en cas de refus), mot de
   passe oublié (`MotDePasseOublieServiceTest` : code envoyé en clair mais enregistré haché, numéro
   inconnu sans erreur ni envoi, code utilisé / expiré / trop essayé refusé même s'il est bon, essai
-  raté compté, premier mot de passe d'un compte importé). Le hasard du tirage est remplacé par un faux `Random` qui
+  raté compté, premier mot de passe d'un compte importé), déconnexion (avec de vrais JWT signés :
+  refresh token périmé après une déconnexion ou un nouveau mot de passe, accepté s'il est fabriqué
+  après, ancien token sans numéro de version refusé). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
@@ -614,7 +621,7 @@ Le développement suit un planning en 8 phases.
 | Phase | Contenu | État |
 |---|---|---|
 | 1 | Bases : projet, entités, base PostgreSQL | ✅ terminée |
-| 2 | Authentification et rôles | ✅ connexion, tokens, rôles, changement de mot de passe, mot de passe oublié (code par SMS) ; reste la déconnexion |
+| 2 | Authentification et rôles | ✅ connexion, tokens, rôles, changement de mot de passe, mot de passe oublié (code par SMS), déconnexion |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
@@ -629,9 +636,12 @@ Le développement suit un planning en 8 phases.
   rafale à un numéro (gêne pour le destinataire, coût chez un vrai fournisseur). Seuls les essais
   d'un code sont limités.
 - Le code de réinitialisation ne part que par SMS, pas encore par email.
-- Changer son mot de passe ne coupe pas les sessions ouvertes : un token émis avant le changement
-  reste accepté jusqu'à son expiration (15 minutes pour l'access token, 7 jours pour le refresh
-  token). La révocation viendra avec la déconnexion.
+- Une déconnexion périme les refresh tokens, pas l'**access token** en cours : il reste accepté
+  jusqu'à son expiration (15 minutes au plus). Le vérifier à chaque requête coûterait une lecture
+  en base par appel.
+- La déconnexion ferme **toutes** les sessions du compte ; on ne peut pas fermer un seul appareil.
+- La rotation ne révoque pas l'ancien refresh token : après un `/auth/refresh`, le précédent reste
+  utilisable jusqu'à la prochaine déconnexion ou son expiration.
 - L'import n'est pas transactionnel : s'il est interrompu au milieu (panne), les lignes déjà
   traitées restent importées sans rapport enregistré ; le relancer est sans danger (les membres
   déjà inscrits sont signalés, pas dupliqués).
@@ -939,6 +949,17 @@ reste lisible.
   non un `401` : l'utilisateur est bien connecté, il s'est trompé dans un champ ; un `401` ferait
   croire au front-end que la session est perdue et le renverrait à l'écran de connexion. Le compte
   modifié est toujours celui du token : la route n'a pas d'identifiant.
+- **Déconnecter sans liste de tokens : un numéro de version par compte.** Un JWT est valable tant
+  que sa signature et sa date le sont : le serveur ne garde aucune liste, il ne peut donc pas en
+  annuler un. Plutôt qu'une table de tokens, chaque compte porte un compteur (`version_sessions`,
+  migration `V6`) recopié dans ses refresh tokens ; l'augmenter de 1 les périme tous. Une première
+  idée, une date « sessions valables depuis », a été abandonnée avant d'être commitée : la date
+  d'émission d'un JWT est arrondie à la seconde, et la comparer à une date précise au millième
+  refuse un token fabriqué juste après une déconnexion (ou en accepte un fabriqué juste avant).
+  Comparer deux entiers n'a pas ce piège.
+- **Un nouveau mot de passe ferme les sessions ouvertes.** Changer ou réinitialiser son mot de
+  passe augmente aussi le numéro de version : celui qui le fait parce qu'il se croit piraté met
+  le pirate dehors, au lieu de lui laisser son refresh token sept jours.
 - **Mot de passe oublié : un code par SMS, haché, court et à usage unique.** La preuve d'identité
   est la possession du téléphone. Le code (6 chiffres, `SecureRandom`) est enregistré haché comme
   un mot de passe : lire la base ne permet pas de s'en servir. Il n'a qu'un million de valeurs
