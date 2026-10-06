@@ -430,6 +430,23 @@ rapport avec leur numéro de ligne (celui du tableur) :
 - L'import entier est refusé, sans rien créer, si la tontine n'est plus `EN_ATTENTE` (`409`), si
   le fichier est illisible ou ne contient aucun membre (`400`).
 
+### Tableau de bord du gestionnaire (implémenté, testé)
+
+Cinq lectures qui répondent à « qu'est-ce que j'ai à faire aujourd'hui ? ». Chaque route renvoie
+une liste de lignes **déjà calculées** : le front n'a rien à additionner. Le gestionnaire n'est
+jamais passé en paramètre, il est lu dans le token : on ne peut voir que **ses** tontines.
+
+| Méthode | Route | Accès | Chaque ligne contient |
+|---|---|---|---|
+| `GET` | `/dashboard/gestionnaire/tontines` | `GESTIONNAIRE` | une tontine : statut, nombre de membres actifs, solde de la caisse de prêts, et pour le cycle en cours son numéro, le collecté et l'attendu (`null` s'il n'y a pas de cycle en cours) |
+| `GET` | `/dashboard/gestionnaire/retards` | `GESTIONNAIRE` | une cotisation `EN_RETARD` : tontine, cycle, nom et téléphone du membre, `resteDu` (reste de la part + reste de la caisse) |
+| `GET` | `/dashboard/gestionnaire/prets` | `GESTIONNAIRE` | un prêt `ACTIF` ou `EN_RETARD` : membre, total à rendre (capital + intérêt), `resteARembourser`, date de la prochaine échéance, statut |
+| `GET` | `/dashboard/gestionnaire/tirages` | `GESTIONNAIRE` | un cycle **clôturé sans tirage** : le tirage à faire, avec la cagnotte collectée et attendue |
+| `GET` | `/dashboard/gestionnaire/gains` | `GESTIONNAIRE` | un tirage dont le gagnant n'a **pas tout reçu** : gagnant, gagné, déjà versé, `resteAVerser`, statut |
+
+Un `MEMBRE` ou un `ADMIN` reçoit `403` sur ces cinq routes. Les tableaux de bord du membre et de
+l'administrateur sont à venir.
+
 ### Codes d'erreur
 
 Les erreurs métier renvoient un message lisible et un code HTTP cohérent :
@@ -568,7 +585,8 @@ private String genererToken() {
 - `TontineServiceTest`, `ParticipationServiceTest`, `UtilisateurServiceTest`, `CycleServiceTest`,
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
   `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest`,
-  `ImportMembreServiceTest`, `AuthServiceTest`, `MotDePasseOublieServiceTest` :
+  `ImportMembreServiceTest`, `AuthServiceTest`, `MotDePasseOublieServiceTest`,
+  `DashboardServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
@@ -588,14 +606,17 @@ private String genererToken() {
   inconnu sans erreur ni envoi, code utilisé / expiré / trop essayé refusé même s'il est bon, essai
   raté compté, premier mot de passe d'un compte importé), déconnexion (avec de vrais JWT signés :
   refresh token périmé après une déconnexion ou un nouveau mot de passe, accepté s'il est fabriqué
-  après, ancien token sans numéro de version refusé). Le hasard du tirage est remplacé par un faux `Random` qui
+  après, ancien token sans numéro de version refusé), tableau de bord du gestionnaire (chiffres du
+  cycle en cours ou `null`, reste dû part + caisse, statut réel d'un prêt et somme de ses échéances
+  restantes, seuls les cycles clôturés sans tirage, gains entièrement versés écartés). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
   `TirageControllerSecurityTest`, `PretControllerSecurityTest`,
   `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest`,
   `InvitationControllerSecurityTest`, `NotificationControllerSecurityTest`,
-  `ImportMembreControllerSecurityTest`, `AuthControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `ImportMembreControllerSecurityTest`, `AuthControllerSecurityTest`,
+  `DashboardControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -626,7 +647,7 @@ Le développement suit un planning en 8 phases.
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur et « mot de passe oublié » |
-| 7-8 | Tableaux de bord par rôle, finitions | ⏳ à venir |
+| 7-8 | Tableaux de bord par rôle, finitions | 🚧 tableau de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser) ; restent ceux du membre et de l'administrateur |
 
 ### Limites connues
 
@@ -989,8 +1010,44 @@ reste lisible.
   « colonnes manquantes ». Elle garde pourtant sa place dans la numérotation, pour que le numéro
   annoncé reste celui que la gestionnaire voit dans son tableur.
 
+- **Un tableau de bord est une lecture calculée, pas une nouvelle table.** Les chiffres affichés
+  (nombre de membres, reste dû, reste à rembourser) ne sont stockés nulle part : ils sont
+  recalculés à chaque appel depuis les données existantes, dans des DTO dédiés à l'écran. Aucune
+  migration, et aucun risque qu'un total enregistré se désynchronise de la réalité. Le reste dû
+  d'une cotisation reprend exactement la formule du paiement (part + caisse), pour que le montant
+  affiché soit celui que le paiement acceptera.
+- **Un bloc = une route, plutôt qu'un seul gros JSON.** Le tableau de bord du gestionnaire est
+  découpé en cinq lectures indépendantes. Le front peut les charger et les rafraîchir séparément,
+  chaque bloc se teste seul, et un bloc lent ne retarde pas les autres. Une seule règle de
+  sécurité, `/dashboard/gestionnaire/**`, couvre les blocs présents et à venir.
+- **« Prochains tirages » traduit en deux listes d'actions.** Un tirage ne se planifie pas : il se
+  fait après la clôture, puis le gagnant est payé en une ou plusieurs fois. Le tableau de bord
+  montre donc ce qui attend une action : les cycles clôturés sans tirage, et les tirages dont le
+  gagnant n'a pas tout reçu. La première liste part des cycles (le tirage n'existe pas encore), la
+  seconde des tirages.
+- **Pas de bloc séparé pour les échéances en retard.** Un prêt passe déjà `EN_RETARD` dès qu'une
+  échéance est dépassée : le statut de la ligne « prêt en cours » le dit, sans seconde liste à
+  recouper.
+- **Le tableau de bord de l'administrateur ne montrera aucun membre.** Décidé en définissant
+  le contenu des écrans : l'administrateur gère la plateforme, pas les tontines. Il verra les gestionnaires
+  (avec leur email, pour les joindre), un nombre global de membres et les tontines par statut, mais
+  ni liste de membres, ni montants, ni prêts. Les abonnements (trois formules prévues) viendront
+  ensuite.
+- **Limite assumée : une requête par ligne.** Chaque tontine demande son nombre de membres et son
+  cycle en cours, chaque prêt ses échéances, chaque cycle clôturé l'existence de son tirage. Pour
+  un gestionnaire qui a quelques tontines, c'est invisible ; au-delà, ces blocs seront à réécrire
+  en requêtes groupées.
+
 ### Bugs trouvés et corrigés
 
+- **Quatre erreurs attrapées en revue avant tout commit, désormais couvertes par des tests.** Toutes
+  compilaient et répondaient `200`. Le statut d'un prêt était écrit en dur (`ACTIF`) au lieu d'être
+  recopié : aucun retard de remboursement n'aurait jamais été affiché. Les deux listes de tirages
+  étaient renvoyées sans leur filtre : tous les cycles apparaissaient en « tirage à faire », et les
+  gagnants déjà payés en « gain à verser » avec un reste de 0. Deux routes `GET` portaient la même
+  URL, ce que Spring refuse au démarrage (« Ambiguous mapping »). Chaque test a été passé au rouge
+  en réintroduisant l'erreur, y compris la suppression de la règle de sécurité (un membre obtenait
+  alors `200`).
 - **Un fichier texte renommé en `.xlsx` faisait répondre `500`.** Le lecteur Excel n'attrapait
   que `IOException` ; or Apache POI signale un faux classeur par une exception *non vérifiée*
   (`NotOfficeXmlFileException`), que le compilateur n'oblige pas à prévoir. Elle remontait jusqu'au
