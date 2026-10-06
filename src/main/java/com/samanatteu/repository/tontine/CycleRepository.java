@@ -25,4 +25,8 @@ public interface CycleRepository extends JpaRepository<Cycle, Long> {
     // IN (4, 7, 12) ». Une seule requête pour toutes les tontines d'un membre.
     List<Cycle> findByTontineIdIn(List<Long> tontineIds);
 
+    // Le cycle de cette tontine ayant ce statut (ex. EN_COURS) ; vide s'il n'y
+    // en a pas. Sûr car une tontine n'a jamais deux cycles EN_COURS à la fois.
+    Optional<Cycle> findByTontineIdAndStatut(Long tontineId, StatutCycle statut);
+
 }

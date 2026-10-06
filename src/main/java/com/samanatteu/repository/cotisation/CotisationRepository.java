@@ -31,4 +31,8 @@ public interface CotisationRepository extends JpaRepository<Cotisation, Long> {
     List<Cotisation> findByStatutInAndCycleStatutAndCycleDateFinPrevue(List<StatutCotisation> statuts,
             StatutCycle statutCycle, LocalDate date);
 
+    // Les cotisations ayant ce statut (ex. EN_RETARD) dans les tontines de ce
+    // gestionnaire : le filtre se fait en base, pas en Java.
+    List<Cotisation> findByStatutAndCycleTontineGestionnaireTelephone(StatutCotisation statut, String telephone);
+
 }

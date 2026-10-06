@@ -16,4 +16,8 @@ public interface PretRepository extends JpaRepository<Pret, Long> {
     List<Pret> findByTontineGestionnaireTelephone(String telephone);
 
     List<Pret> findByMembreTelephone(String telephone);
+
+    // Les prêts dont le statut fait partie de la liste (ex. ACTIF et EN_RETARD)
+    // dans les tontines de ce gestionnaire.
+    List<Pret> findByStatutInAndTontineGestionnaireTelephone(List<StatutPret> statuts, String telephone);
 }

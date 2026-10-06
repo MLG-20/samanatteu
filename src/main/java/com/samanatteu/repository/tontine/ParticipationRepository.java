@@ -26,4 +26,7 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
     // Sert au prêt : vérifier qu'il est bien membre de cette tontine.
     Optional<Participation> findByTontineIdAndMembreId(Long tontineId, Long membreId);
 
+    // COUNT(*) côté base : on récupère un nombre, pas la liste des participants.
+    long countByTontineIdAndStatut(Long tontineId, StatutParticipation statut);
+
 }
