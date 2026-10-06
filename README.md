@@ -474,15 +474,16 @@ Controller  ──▶  Service  ──▶  Repository  ──▶  PostgreSQL
 src/main/java/com/samanatteu/
 ├── config/        SecurityConfig (règles d'accès par route et par rôle)
 ├── security/      JwtUtil, JwtAuthFilter, gestionnaires d'erreur 401 / 403, UtilisateurConnecte
-├── controller/    un contrôleur REST par ressource
+├── controller/    un contrôleur REST par ressource, regroupés par domaine
+│   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/  dashboard/
 ├── service/       logique métier, regroupée par domaine
-│   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
+│   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/  dashboard/
 ├── repository/    interfaces Spring Data JPA, regroupées par domaine
 │   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── entity/        entités JPA (12 tables), regroupées par domaine
 │   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── dto/           objets d'échange avec le client (jamais l'entité brute : pas de fuite de mot de passe)
-│   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
+│   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/  dashboard/
 ├── enums/         statuts et rôles, regroupés par domaine (ModePaiement, commun, à la racine)
 │   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── exception/     exceptions métier (héritent de SamanatteuException, avec leur code HTTP),
@@ -1037,6 +1038,12 @@ reste lisible.
   cycle en cours, chaque prêt ses échéances, chaque cycle clôturé l'existence de son tirage. Pour
   un gestionnaire qui a quelques tontines, c'est invisible ; au-delà, ces blocs seront à réécrire
   en requêtes groupées.
+- **Les contrôleurs rangés par domaine, comme le reste du code.** `controller/` était le seul
+  dossier resté à plat (14 fichiers) alors que `service/`, `dto/`, `repository/`, `entity/` et
+  `exception/` étaient déjà découpés par domaine. Il suit maintenant le même découpage, et les
+  tests de sécurité aussi : pour une fonctionnalité, on ouvre le même sous-dossier dans chaque
+  couche. Seule la ligne `package` de chaque fichier a changé (déplacements faits avec `git mv`
+  pour garder l'historique) ; aucune URL n'a bougé, et la suite de tests est restée verte.
 
 ### Bugs trouvés et corrigés
 
