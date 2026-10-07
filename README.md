@@ -444,8 +444,23 @@ jamais passé en paramètre, il est lu dans le token : on ne peut voir que **ses
 | `GET` | `/dashboard/gestionnaire/tirages` | `GESTIONNAIRE` | un cycle **clôturé sans tirage** : le tirage à faire, avec la cagnotte collectée et attendue |
 | `GET` | `/dashboard/gestionnaire/gains` | `GESTIONNAIRE` | un tirage dont le gagnant n'a **pas tout reçu** : gagnant, gagné, déjà versé, `resteAVerser`, statut |
 
-Un `MEMBRE` ou un `ADMIN` reçoit `403` sur ces cinq routes. Les tableaux de bord du membre et de
-l'administrateur sont à venir.
+Un `MEMBRE` ou un `ADMIN` reçoit `403` sur ces cinq routes.
+
+### Tableau de bord du membre (implémenté, testé)
+
+Quatre lectures qui répondent à « où j'en suis ? ». Même principe : des lignes déjà calculées, et
+le membre est lu dans le token. Il ne voit que **ses** parts, **ses** dettes et **ses** gains,
+jamais ceux des autres membres de ses tontines.
+
+| Méthode | Route | Accès | Chaque ligne contient |
+|---|---|---|---|
+| `GET` | `/dashboard/membre/tontines` | `MEMBRE` | une tontine où il est inscrit : statut, `nombreParts`, `montantParCycle` (parts × montant de la part + caisse de prêts), `nombreGains` (une part = un gain : à comparer à ses parts pour savoir s'il lui reste un tirage à gagner) |
+| `GET` | `/dashboard/membre/cotisations` | `MEMBRE` | une de ses cotisations **non soldée** : tontine, cycle, `resteDu` (part + caisse), `dateLimite` (fin prévue du cycle), statut |
+| `GET` | `/dashboard/membre/prets` | `MEMBRE` | un de ses prêts `ACTIF` ou `EN_RETARD` : total à rendre, `resteARembourser`, date de la prochaine échéance, statut |
+| `GET` | `/dashboard/membre/gains` | `MEMBRE` | un tirage **qu'il a gagné** : gagné, déjà reçu, `resteARecevoir`, statut ; les gains entièrement versés restent affichés (historique) |
+
+Un `GESTIONNAIRE` ou un `ADMIN` reçoit `403` sur ces quatre routes. L'historique de ses mouvements
+d'argent est déjà donné par `GET /transaction`. Le tableau de bord de l'administrateur est à venir.
 
 ### Codes d'erreur
 
@@ -587,7 +602,7 @@ private String genererToken() {
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
   `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest`,
   `ImportMembreServiceTest`, `AuthServiceTest`, `MotDePasseOublieServiceTest`,
-  `DashboardServiceTest` :
+  `DashboardServiceTest`, `DashboardMembreServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
@@ -609,7 +624,10 @@ private String genererToken() {
   refresh token périmé après une déconnexion ou un nouveau mot de passe, accepté s'il est fabriqué
   après, ancien token sans numéro de version refusé), tableau de bord du gestionnaire (chiffres du
   cycle en cours ou `null`, reste dû part + caisse, statut réel d'un prêt et somme de ses échéances
-  restantes, seuls les cycles clôturés sans tirage, gains entièrement versés écartés). Le hasard du tirage est remplacé par un faux `Random` qui
+  restantes, seuls les cycles clôturés sans tirage, gains entièrement versés écartés), tableau de
+  bord du membre (montant par cycle sans multiplier la caisse, cotisations soldées et prêts
+  remboursés écartés, intérêt compté dans le total d'un prêt, gains lus par la participation et
+  jamais par la requête du gestionnaire, gains versés conservés). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
@@ -617,7 +635,7 @@ private String genererToken() {
   `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest`,
   `InvitationControllerSecurityTest`, `NotificationControllerSecurityTest`,
   `ImportMembreControllerSecurityTest`, `AuthControllerSecurityTest`,
-  `DashboardControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `DashboardControllerSecurityTest`, `DashboardMembreControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -648,7 +666,7 @@ Le développement suit un planning en 8 phases.
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur et « mot de passe oublié » |
-| 7-8 | Tableaux de bord par rôle, finitions | 🚧 tableau de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser) ; restent ceux du membre et de l'administrateur |
+| 7-8 | Tableaux de bord par rôle, finitions | 🚧 tableaux de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser) et du membre (ses tontines, ce qu'il doit, ses prêts, ses gains) ; reste celui de l'administrateur |
 
 ### Limites connues
 
@@ -1038,6 +1056,15 @@ reste lisible.
   cycle en cours, chaque prêt ses échéances, chaque cycle clôturé l'existence de son tirage. Pour
   un gestionnaire qui a quelques tontines, c'est invisible ; au-delà, ces blocs seront à réécrire
   en requêtes groupées.
+- **Un service et un contrôleur par rôle, plutôt qu'un tableau de bord qui s'adapte.** Le
+  gestionnaire et le membre ont chacun leur `Dashboard…Service` et leur contrôleur, sous un
+  préfixe d'URL distinct. Aucune méthode ne contient de « si gestionnaire… sinon… » : chaque
+  requête est écrite pour un seul rôle, et chaque préfixe a sa règle de sécurité. Le prix est une
+  petite duplication (la ligne d'un prêt est calculée de la même façon des deux côtés), acceptée
+  tant qu'il n'y a que deux usages.
+- **Le membre voit aussi ses gains déjà versés.** Chez le gestionnaire, « gains à verser » est une
+  liste de choses à faire : un gain entièrement versé en sort. Chez le membre, la même donnée est
+  un historique de ce qu'il a touché : elle reste, avec un reste à recevoir de 0.
 - **Les contrôleurs rangés par domaine, comme le reste du code.** `controller/` était le seul
   dossier resté à plat (14 fichiers) alors que `service/`, `dto/`, `repository/`, `entity/` et
   `exception/` étaient déjà découpés par domaine. Il suit maintenant le même découpage, et les
@@ -1047,6 +1074,15 @@ reste lisible.
 
 ### Bugs trouvés et corrigés
 
+- **Une liste vide qui ressemblait à une réponse normale.** Le bloc « mes gains » du membre
+  réutilisait la requête du gestionnaire (les tirages des tontines *gérées par* ce téléphone). Un
+  membre ne gère aucune tontine : la requête renvoyait toujours une liste vide, avec un `200`. Rien
+  ne plantait, le membre aurait simplement vu « aucun gain » après avoir gagné. Corrigé par une
+  requête qui passe par la participation du gagnant ; un test vérifie que la requête du
+  gestionnaire n'est jamais appelée depuis le tableau de bord du membre. Attrapé en revue avant
+  tout commit, avec quatre autres erreurs du même chantier : deux filtres oubliés (cotisations
+  soldées et prêts remboursés affichés), l'intérêt absent du total d'un prêt, et un constructeur
+  de service déclaré `private`.
 - **Quatre erreurs attrapées en revue avant tout commit, désormais couvertes par des tests.** Toutes
   compilaient et répondaient `200`. Le statut d'un prêt était écrit en dur (`ACTIF`) au lieu d'être
   recopié : aucun retard de remboursement n'aurait jamais été affiché. Les deux listes de tirages
