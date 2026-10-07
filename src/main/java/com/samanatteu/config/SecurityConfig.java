@@ -68,6 +68,7 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/notification").hasAnyRole("GESTIONNAIRE", "MEMBRE")
                                                 .requestMatchers(HttpMethod.GET, "/importMembre").hasRole("GESTIONNAIRE")
                                                 .requestMatchers(HttpMethod.GET, "/dashboard/gestionnaire/**").hasRole("GESTIONNAIRE")
+                                                .requestMatchers(HttpMethod.GET, "/dashboard/membre/**").hasRole("MEMBRE")
 
                                                 .anyRequest().authenticated())
                                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

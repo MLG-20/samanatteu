@@ -21,4 +21,8 @@ public interface TirageRepository extends JpaRepository<Tirage, Long> {
     // tontines du membre, y compris ceux gagnés par les autres (US-M03).
     List<Tirage> findByCycleTontineIdIn(List<Long> tontineIds);
 
+    // tirage → participation → membre → telephone : les tirages GAGNÉS par
+    // ce membre (pas ceux des autres membres de ses tontines).
+    List<Tirage> findByParticipationMembreTelephone(String telephone);
+
 }
