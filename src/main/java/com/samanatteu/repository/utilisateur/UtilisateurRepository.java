@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 
 public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long> {
 
@@ -15,4 +16,6 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long> 
     Optional<Utilisateur> findByEmail(String email);
 
     Optional<Utilisateur> findByTelephone(String telephone);
+
+    Long countByRole(RoleUtilisateur role);
 }

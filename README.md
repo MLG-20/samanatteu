@@ -6,7 +6,7 @@ cycles, les cotisations, les tirages et les prêts.
 
 > **État du projet : en développement actif.** Authentification, tontines, participations,
 > cycles et cotisations, tirages, caisse de prêts, prêts, journal financier, invitations et
-> notifications (envoi simulé) sont fonctionnels et testés ; l'import de membres par fichier CSV ou Excel est fonctionnel et testé ; les tableaux de bord restent à faire. Voir
+> notifications (envoi simulé) sont fonctionnels et testés ; l'import de membres par fichier CSV ou Excel est fonctionnel et testé ; les tableaux de bord du gestionnaire, du membre et de l'administrateur sont fonctionnels et testés. Voir
 > [Avancement](#avancement).
 
 ## Sommaire
@@ -460,7 +460,20 @@ jamais ceux des autres membres de ses tontines.
 | `GET` | `/dashboard/membre/gains` | `MEMBRE` | un tirage **qu'il a gagné** : gagné, déjà reçu, `resteARecevoir`, statut ; les gains entièrement versés restent affichés (historique) |
 
 Un `GESTIONNAIRE` ou un `ADMIN` reçoit `403` sur ces quatre routes. L'historique de ses mouvements
-d'argent est déjà donné par `GET /transaction`. Le tableau de bord de l'administrateur est à venir.
+d'argent est déjà donné par `GET /transaction`.
+
+### Tableau de bord de l'administrateur (implémenté, testé)
+
+Deux lectures qui répondent à « où en est la plateforme ? ». Même principe : des chiffres
+**déjà calculés** en base (`COUNT`), sans jamais exposer un nom, un téléphone ou un montant
+(frontière SaaS : l'ADMIN ne voit pas le contenu des tontines).
+
+| Méthode | Route | Accès | Chaque objet contient |
+|---|---|---|---|
+| `GET` | `/dashboard/admin/utilisateurs` | `ADMIN` | `total` + détail par rôle : `nbAdmins`, `nbGestionnaires`, `nbMembres` (la somme vaut `total`) |
+| `GET` | `/dashboard/admin/tontines` | `ADMIN` | `total` + détail par statut : `nbEnAttente`, `nbActive`, `nbSuspendue`, `nbTerminee` (la somme vaut `total`) |
+
+Un `GESTIONNAIRE` ou un `MEMBRE` reçoit `403` sur ces deux routes.
 
 ### Codes d'erreur
 
@@ -602,7 +615,7 @@ private String genererToken() {
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
   `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest`,
   `ImportMembreServiceTest`, `AuthServiceTest`, `MotDePasseOublieServiceTest`,
-  `DashboardServiceTest`, `DashboardMembreServiceTest` :
+  `DashboardServiceTest`, `DashboardMembreServiceTest`, `DashboardAdminServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
   rôle, champs modifiables d'un profil, calcul des montants dus et attendus, paiements partiels et
@@ -627,7 +640,8 @@ private String genererToken() {
   restantes, seuls les cycles clôturés sans tirage, gains entièrement versés écartés), tableau de
   bord du membre (montant par cycle sans multiplier la caisse, cotisations soldées et prêts
   remboursés écartés, intérêt compté dans le total d'un prêt, gains lus par la participation et
-  jamais par la requête du gestionnaire, gains versés conservés). Le hasard du tirage est remplacé par un faux `Random` qui
+  jamais par la requête du gestionnaire, gains versés conservés), tableau de bord de
+  l'administrateur (totaux `count()` + détail par rôle et par statut, sans filtre token). Le hasard du tirage est remplacé par un faux `Random` qui
   choisit une case connue et retient la taille de l'urne.
 - `TontineControllerSecurityTest`, `ParticipationControllerSecurityTest`,
   `CycleControllerSecurityTest`, `CotisationControllerSecurityTest`,
@@ -635,7 +649,7 @@ private String genererToken() {
   `EcheancePretControllerSecurityTest`, `TransactionControllerSecurityTest`,
   `InvitationControllerSecurityTest`, `NotificationControllerSecurityTest`,
   `ImportMembreControllerSecurityTest`, `AuthControllerSecurityTest`,
-  `DashboardControllerSecurityTest`, `DashboardMembreControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
+  `DashboardControllerSecurityTest`, `DashboardMembreControllerSecurityTest`, `DashboardAdminControllerSecurityTest` : règles d'accès HTTP de `SecurityConfig` (401 / 403 / 200 / 204 /
   404 / 405) et validation des corps (400) avec MockMvc, sans serveur ni base.
 - `JwtAuthFilterTest` : le filtre JWT avec de **vrais** tokens signés (access accepté, refresh et
   token falsifié refusés). Les tests MockMvc simulent l'utilisateur avec `@WithMockUser` et ne
@@ -666,7 +680,7 @@ Le développement suit un planning en 8 phases.
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur et « mot de passe oublié » |
-| 7-8 | Tableaux de bord par rôle, finitions | 🚧 tableaux de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser) et du membre (ses tontines, ce qu'il doit, ses prêts, ses gains) ; reste celui de l'administrateur |
+| 7-8 | Tableaux de bord par rôle, finitions | ✅ tableaux de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser), du membre (ses tontines, ce qu'il doit, ses prêts, ses gains) et de l'administrateur (comptes par rôle, tontines par statut) |
 
 ### Limites connues
 
