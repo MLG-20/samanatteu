@@ -7,6 +7,8 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 
+import com.samanatteu.dto.tontine.InscriptionDTO;
+import com.samanatteu.dto.tontine.ModificationParticipationDTO;
 import com.samanatteu.dto.tontine.ParticipationDTO;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
@@ -17,7 +19,6 @@ import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.tontine.InscriptionsFermeesException;
 import com.samanatteu.exception.tontine.NombrePartsInvalideException;
 import com.samanatteu.exception.tontine.ParticipationDejaExistanteException;
-import com.samanatteu.exception.tontine.RelationObligatoireException;
 import com.samanatteu.exception.tontine.TontineIntrouvableException;
 import com.samanatteu.exception.utilisateur.MembreIntrouvableException;
 import com.samanatteu.repository.tontine.ParticipationRepository;
@@ -58,23 +59,17 @@ public class ParticipationService {
     // Ordre volontaire des contrôles : d'abord « qui a le droit » (propriétaire), ensuite
     // « est-ce possible » (membre, doublon, statut, parts). Un étranger reçoit ainsi un 403
     // avant d'apprendre quoi que ce soit sur la tontine.
-    public ParticipationDTO createParticipation(Participation participation) {
-        if (participation.getMembre() == null || participation.getMembre().getId() == null) {
-            throw new RelationObligatoireException("membre");
-        }
-        if (participation.getTontine() == null || participation.getTontine().getId() == null) {
-            throw new RelationObligatoireException("tontine");
-        }
-        // La tontine et le membre du JSON ne sont que des {id: …} fabriqués par le client :
-        // on recharge les vrais en base (404 propre au lieu d'un 500 sur la clé étrangère).
-        Tontine tontine = tontineRepository.findById(participation.getTontine().getId())
+    // Le client n'envoie que des ids (membreId, tontineId) : on recharge les vrais
+    // en base (404 propre au lieu d'un 500 sur la clé étrangère).
+    public ParticipationDTO createParticipation(InscriptionDTO demande) {
+        Tontine tontine = tontineRepository.findById(demande.getTontineId())
                 .orElseThrow(() -> new TontineIntrouvableException());
         utilisateurConnecte.verifierGestionnaire(tontine);
 
-        Utilisateur membre = utilisateurRepository.findById(participation.getMembre().getId())
+        Utilisateur membre = utilisateurRepository.findById(demande.getMembreId())
                 .orElseThrow(() -> new MembreIntrouvableException());
 
-        return convertiParticipationDTO(inscrire(tontine, membre, participation.getNombreParts()));
+        return convertiParticipationDTO(inscrire(tontine, membre, demande.getNombreParts()));
     }
 
     // Les règles d'inscription, écrites une seule fois : utilisées par l'ajout par la
@@ -106,12 +101,12 @@ public class ParticipationService {
         return enregistree;
     }
 
-    public Optional<ParticipationDTO> updateParticipation(Long id, Participation participationModifier) {
+    public Optional<ParticipationDTO> updateParticipation(Long id, ModificationParticipationDTO modification) {
         return participationRepository.findById(id).map(existante -> {
             utilisateurConnecte.verifierGestionnaire(existante.getTontine());
             verifierInscriptionsOuvertes(existante.getTontine());
-            verifierNombreParts(participationModifier.getNombreParts());
-            existante.setNombreParts(participationModifier.getNombreParts());
+            verifierNombreParts(modification.getNombreParts());
+            existante.setNombreParts(modification.getNombreParts());
             return convertiParticipationDTO(participationRepository.save(existante));
         });
     }

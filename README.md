@@ -729,8 +729,6 @@ Le développement suit un planning en 8 phases.
 - Comment devient-on `GESTIONNAIRE` : décidé pour un modèle par **abonnement** (voir le journal
   ci-dessous), pas encore implémenté — aujourd'hui l'inscription permet encore de choisir
   `GESTIONNAIRE` ou `MEMBRE` librement.
-- `POST /tontine`, `PUT /tontine/{id}` et `/participation` reçoivent encore l'entité JPA plutôt
-  qu'un DTO d'entrée (protégées par une recopie champ par champ, à migrer vers des DTO).
 - L'inscription enregistre encore un email vide (`""`) tel quel au lieu de `null`.
 
 ## Journal des décisions
@@ -752,8 +750,8 @@ reste lisible.
   (`StatutTontine`) n'expose que des actions dédiées (`activer`/`suspendre`/`cloturer`), chacune
   avec ses transitions autorisées ; le `PUT` générique n'écrit plus le statut du tout. Voir
   [`Notes_Cours/11_Cycle_de_Vie_Statut.md`](../Notes_Cours/11_Cycle_de_Vie_Statut.md).
-- **Un objet imbriqué du JSON (`{"id": …}`) n'est jamais une entité de confiance.** `tontine` et
-  `membre` envoyés dans le corps d'une requête ne servent qu'à indiquer un id ; le service recharge
+- **Un objet imbriqué du JSON (`{"id": …}`) n'est jamais une entité de confiance.** Les écritures
+  reçoivent de simples ids (`membreId`, `tontineId`, `gestionnaireId`) ; le service recharge
   toujours la vraie ressource en base avant de contrôler quoi que ce soit dessus.
 - **Comment devient-on `GESTIONNAIRE` : par abonnement.** Dans un SaaS, c'est l'organisateur qui
   paie, pas les membres. Prévu en 3 étapes futures : (1) une entité `Abonnement` (formule, statut,
@@ -771,7 +769,11 @@ reste lisible.
   protéger en « oubliant » de recopier les champs sensibles est une liste noire, fragile. Un DTO
   d'entrée est une liste blanche : un champ absent du DTO ne peut tout simplement pas être envoyé,
   et le compilateur refuse qu'on le recopie. Appliqué à l'inscription et à la modification de
-  profil (`ModificationUtilisateurDTO` : `nom`, `prenom`, `email`). Changer de rôle relèvera d'une
+  profil (`ModificationUtilisateurDTO` : `nom`, `prenom`, `email`), à la création et à la
+  modification de tontine (`CreationTontineDTO`, `ModificationTontineDTO` : les 7 champs
+  modifiables, jamais `statut`, `solde`, `nbCycles` ni `gestionnaire`), et aux participations
+  (`InscriptionDTO` : `membreId`, `tontineId`, `nombreParts` ; `ModificationParticipationDTO` :
+  `nombreParts` seul). Changer de rôle relèvera d'une
   action d'administration dédiée ; changer de téléphone (l'identité du JWT) d'une vérification par
   SMS.
 - **Un seul point de lecture de l'utilisateur connecté.** Trois services lisaient eux-mêmes

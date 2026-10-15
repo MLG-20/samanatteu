@@ -28,6 +28,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.samanatteu.dto.tontine.InscriptionDTO;
+import com.samanatteu.dto.tontine.ModificationParticipationDTO;
 import com.samanatteu.dto.tontine.ParticipationDTO;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
@@ -38,7 +40,6 @@ import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.tontine.InscriptionsFermeesException;
 import com.samanatteu.exception.tontine.NombrePartsInvalideException;
 import com.samanatteu.exception.tontine.ParticipationDejaExistanteException;
-import com.samanatteu.exception.tontine.RelationObligatoireException;
 import com.samanatteu.exception.tontine.TontineIntrouvableException;
 import com.samanatteu.exception.utilisateur.MembreIntrouvableException;
 import com.samanatteu.repository.tontine.ParticipationRepository;
@@ -104,17 +105,13 @@ class ParticipationServiceTest {
     }
 
     // Ce que le client envoie pour inscrire le membre 30 à la tontine 6 avec ce nombre de parts.
-    // Le JSON du client ne contient qu'un {id: 6} pour la tontine (objet "fabriqué").
-    private Participation demande(Integer parts) {
-        Utilisateur membre = new Utilisateur();
-        membre.setId(30L);
-        Tontine tontineDuJson = new Tontine();
-        tontineDuJson.setId(6L);
-        Participation p = new Participation();
-        p.setMembre(membre);
-        p.setTontine(tontineDuJson);
-        p.setNombreParts(parts);
-        return p;
+    // Seulement des ids, jamais d'objets imbriqués : le service recharge les vrais en base.
+    private InscriptionDTO demande(Integer parts) {
+        InscriptionDTO dto = new InscriptionDTO();
+        dto.setMembreId(30L);
+        dto.setTontineId(6L);
+        dto.setNombreParts(parts);
+        return dto;
     }
 
     // Une participation déjà en base (id 9) du membre 30 dans la tontine donnée.
@@ -132,28 +129,6 @@ class ParticipationServiceTest {
     }
 
     // ------------------------------------------------- création : les refus
-
-    @Test
-    void createParticipation_refuseSansMembre() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
-        Participation sansMembre = demande(2);
-        sansMembre.setMembre(null);
-
-        assertThrows(RelationObligatoireException.class,
-                () -> participationService.createParticipation(sansMembre));
-        verify(participationRepository, never()).save(any());
-    }
-
-    @Test
-    void createParticipation_refuseSansTontine() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
-        Participation sansTontine = demande(2);
-        sansTontine.setTontine(null);
-
-        assertThrows(RelationObligatoireException.class,
-                () -> participationService.createParticipation(sansTontine));
-        verify(participationRepository, never()).save(any());
-    }
 
     @Test
     void createParticipation_renvoie404SiLaTontineNExistePas() {
@@ -214,29 +189,6 @@ class ParticipationServiceTest {
         verify(participationRepository, never()).save(any());
     }
 
-    // Un {"membre": {}} sans id : refusé proprement (400) au lieu de planter plus loin (500).
-    @Test
-    void createParticipation_refuseUnMembreSansId() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
-        Participation membreSansId = demande(2);
-        membreSansId.setMembre(new Utilisateur());
-
-        assertThrows(RelationObligatoireException.class,
-                () -> participationService.createParticipation(membreSansId));
-        verify(participationRepository, never()).save(any());
-    }
-
-    @Test
-    void createParticipation_refuseUneTontineSansId() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
-        Participation tontineSansId = demande(2);
-        tontineSansId.setTontine(new Tontine());
-
-        assertThrows(RelationObligatoireException.class,
-                () -> participationService.createParticipation(tontineSansId));
-        verify(participationRepository, never()).save(any());
-    }
-
     // Le membre du JSON n'existe pas en base : 404 propre, et rien n'est enregistré
     // (avant ce contrôle, la base refusait la clé étrangère et le client recevait un 500).
     @Test
@@ -264,7 +216,8 @@ class ParticipationServiceTest {
 
     // ---------------------------------------- création : ce que décide le serveur
 
-    // Première inscription : ordre 1, statut ACTIF, date du jour, et le client ne peut pas imposer ses valeurs.
+    // Première inscription : ordre 1, statut ACTIF, date du jour. Le DTO ne propose
+    // ni statut ni ordre : le serveur les impose.
     @Test
     void createParticipation_lePremierInscritRecoitLOrdre1() {
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineDe770000101(StatutTontine.EN_ATTENTE)));
@@ -274,12 +227,7 @@ class ParticipationServiceTest {
         when(participationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         connecter("770000101", "ROLE_GESTIONNAIRE");
 
-        // Le client essaie de tricher : il envoie un statut et un ordre de son choix.
-        Participation triche = demande(2);
-        triche.setStatut(StatutParticipation.SORTI);
-        triche.setOrdreInscription(99);
-
-        ParticipationDTO resultat = participationService.createParticipation(triche);
+        ParticipationDTO resultat = participationService.createParticipation(demande(2));
 
         assertEquals(1, resultat.getOrdreInscription());
         assertEquals(StatutParticipation.ACTIF, resultat.getStatut());
@@ -316,13 +264,10 @@ class ParticipationServiceTest {
         when(participationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         connecter("770000101", "ROLE_GESTIONNAIRE");
 
-        // Le client tente aussi de déplacer la participation vers un autre membre et de changer son statut.
-        Utilisateur autreMembre = new Utilisateur();
-        autreMembre.setId(31L);
-        Participation modif = new Participation();
+        // Le DTO ne propose que nombreParts : impossible de déplacer vers un autre
+        // membre ou de changer le statut.
+        ModificationParticipationDTO modif = new ModificationParticipationDTO();
         modif.setNombreParts(5);
-        modif.setMembre(autreMembre);
-        modif.setStatut(StatutParticipation.SORTI);
 
         ParticipationDTO resultat = participationService.updateParticipation(9L, modif).get();
 
@@ -337,7 +282,7 @@ class ParticipationServiceTest {
         when(participationRepository.findById(9L)).thenReturn(Optional.of(participationEnBase(tontine, 1)));
         connecter("770000102", "ROLE_GESTIONNAIRE");
 
-        Participation modif = new Participation();
+        ModificationParticipationDTO modif = new ModificationParticipationDTO();
         modif.setNombreParts(5);
 
         assertThrows(AccesRefuseException.class, () -> participationService.updateParticipation(9L, modif));
@@ -350,7 +295,7 @@ class ParticipationServiceTest {
         when(participationRepository.findById(9L)).thenReturn(Optional.of(participationEnBase(tontine, 1)));
         connecter("770000101", "ROLE_GESTIONNAIRE");
 
-        Participation modif = new Participation();
+        ModificationParticipationDTO modif = new ModificationParticipationDTO();
         modif.setNombreParts(5);
 
         assertThrows(InscriptionsFermeesException.class, () -> participationService.updateParticipation(9L, modif));
@@ -363,7 +308,7 @@ class ParticipationServiceTest {
         when(participationRepository.findById(9L)).thenReturn(Optional.of(participationEnBase(tontine, 1)));
         connecter("770000101", "ROLE_GESTIONNAIRE");
 
-        Participation modif = new Participation();
+        ModificationParticipationDTO modif = new ModificationParticipationDTO();
         modif.setNombreParts(0);
 
         assertThrows(NombrePartsInvalideException.class, () -> participationService.updateParticipation(9L, modif));
