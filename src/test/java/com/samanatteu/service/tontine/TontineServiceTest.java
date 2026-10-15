@@ -24,10 +24,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.samanatteu.dto.tontine.CreationTontineDTO;
+import com.samanatteu.dto.tontine.ModificationTontineDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.tontine.FrequenceTontine;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.tontine.StatutTontine;
 import com.samanatteu.exception.AccesRefuseException;
@@ -112,7 +115,7 @@ class TontineServiceTest {
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase));
         connecterCommeGestionnaire("770000101");
 
-        Tontine nouvellesValeurs = new Tontine();
+        ModificationTontineDTO nouvellesValeurs = new ModificationTontineDTO();
         nouvellesValeurs.setNom("Mbambara");
 
         assertThrows(AccesRefuseException.class,
@@ -120,10 +123,9 @@ class TontineServiceTest {
         verify(tontineRepository, never()).save(any());
     }
 
-    // Scénario du trou de sécurité corrigé : A est connecté, mais le JSON du client
-    // désigne B comme
-    // gestionnaire. La tontine créée doit appartenir à A (le token), pas à B (le
-    // corps de la requête).
+    // Scénario du trou de sécurité corrigé : avant, le JSON pouvait désigner B
+    // comme gestionnaire. Avec CreationTontineDTO, ce champ n'existe plus :
+    // la tontine créée appartient forcément à A (le token).
     @Test
     void createTontine_imposeLeGestionnaireDuToken() {
         // --- Given (préparer) ---
@@ -140,12 +142,12 @@ class TontineServiceTest {
         // On simule le token de A dans le SecurityContextHolder.
         connecterCommeGestionnaire("770000101");
 
-        // B = le gestionnaire que le client essaie de s'attribuer dans son JSON (id
-        // 19L).
-        Utilisateur b = new Utilisateur();
-        b.setId(19L);
-        Tontine demande = new Tontine();
-        demande.setGestionnaire(b);
+        // Le DTO ne propose aucun champ gestionnaire : impossible de s'attribuer B.
+        CreationTontineDTO demande = new CreationTontineDTO();
+        demande.setNom("Mbambara");
+        demande.setMontantCaissePret(BigDecimal.ZERO);
+        demande.setFrequence(FrequenceTontine.MOIS);
+        demande.setIntervalle(1);
         // Un mock renvoie null par défaut : sans cette ligne, save() renverrait null et
         // convertiTontineDTO planterait. thenAnswer(...getArgument(0)) = "réponds avec
         // la tontine
@@ -158,7 +160,7 @@ class TontineServiceTest {
         // --- Then (vérifier) ---
         // 18L et pas 18 : getGestionnaireId() est un Long, et assertEquals(int, Long)
         // échouerait.
-        // Attendu = A (18), pas B (19).
+        // Attendu = A (18) : le token décide, pas le JSON.
         assertEquals(18L, resultat.getGestionnaireId());
     }
 
@@ -229,7 +231,8 @@ class TontineServiceTest {
         return tontine;
     }
 
-    // Le client envoie "statut: TERMINEE" dans son JSON : le serveur doit l'ignorer et imposer EN_ATTENTE.
+    // Avant, le client envoyait "statut: TERMINEE" dans son JSON : le serveur devait
+    // l'ignorer. Avec le DTO, ce champ n'existe plus : EN_ATTENTE est imposé.
     @Test
     void createTontine_forceLeStatutEnAttente() {
         Utilisateur a = new Utilisateur();
@@ -239,8 +242,11 @@ class TontineServiceTest {
         connecterCommeGestionnaire("770000101");
         when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Tontine demande = new Tontine();
-        demande.setStatut(StatutTontine.TERMINEE);
+        CreationTontineDTO demande = new CreationTontineDTO();
+        demande.setNom("Mbambara");
+        demande.setMontantCaissePret(BigDecimal.ZERO);
+        demande.setFrequence(FrequenceTontine.MOIS);
+        demande.setIntervalle(1);
 
         TontineDTO resultat = tontineService.createTontine(demande);
 
@@ -253,7 +259,7 @@ class TontineServiceTest {
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.ACTIVE)));
         connecterCommeGestionnaire("770000101");
 
-        Tontine nouvellesValeurs = new Tontine();
+        ModificationTontineDTO nouvellesValeurs = new ModificationTontineDTO();
         nouvellesValeurs.setNom("Nouveau nom");
 
         assertThrows(TontineNonModifiableException.class,
@@ -261,19 +267,16 @@ class TontineServiceTest {
         verify(tontineRepository, never()).save(any());
     }
 
-    // Le client tente de changer le statut et le gestionnaire via le PUT : les deux doivent être ignorés.
+    // Avec le DTO, statut et gestionnaire n'existent plus dans le PUT : le nom
+    // (champ modifiable) change, le reste est forcément conservé.
     @Test
     void updateTontine_neChangeNiLeStatutNiLeGestionnaire() {
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontineEnBase(StatutTontine.EN_ATTENTE)));
         connecterCommeGestionnaire("770000101");
         when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Utilisateur b = new Utilisateur();
-        b.setId(19L);
-        Tontine nouvellesValeurs = new Tontine();
+        ModificationTontineDTO nouvellesValeurs = new ModificationTontineDTO();
         nouvellesValeurs.setNom("Nouveau nom");
-        nouvellesValeurs.setStatut(StatutTontine.TERMINEE);
-        nouvellesValeurs.setGestionnaire(b);
 
         TontineDTO resultat = tontineService.updateTontine(6L, nouvellesValeurs).get();
 
@@ -336,7 +339,8 @@ class TontineServiceTest {
         verify(participationRepository, never()).findByTontineIdAndStatut(any(), any());
     }
 
-    // Le client envoie "nbCycles: 12" : le serveur l'ignore et met 0 (« pas encore calculé »).
+    // Avant, le client envoyait "nbCycles: 12" : le serveur l'ignorait et mettait 0
+    // (« pas encore calculé »). Avec le DTO, ce champ n'existe plus.
     @Test
     void createTontine_forceNbCyclesAZero() {
         Utilisateur a = new Utilisateur();
@@ -346,15 +350,18 @@ class TontineServiceTest {
         connecterCommeGestionnaire("770000101");
         when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Tontine demande = new Tontine();
-        demande.setNbCycles(12);
+        CreationTontineDTO demande = new CreationTontineDTO();
+        demande.setNom("Mbambara");
+        demande.setMontantCaissePret(BigDecimal.ZERO);
+        demande.setFrequence(FrequenceTontine.MOIS);
+        demande.setIntervalle(1);
 
         TontineDTO resultat = tontineService.createTontine(demande);
 
         assertEquals(0, resultat.getNbCycles());
     }
 
-    // Le PUT ne peut plus changer nbCycles : c'est le serveur qui le fixe.
+    // Le PUT ne touche jamais à nbCycles : le DTO ne le propose pas, le serveur le garde.
     @Test
     void updateTontine_neChangePasNbCycles() {
         Tontine enBase = tontineEnBase(StatutTontine.EN_ATTENTE);
@@ -363,16 +370,16 @@ class TontineServiceTest {
         connecterCommeGestionnaire("770000101");
         when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Tontine nouvellesValeurs = new Tontine();
-        nouvellesValeurs.setNbCycles(12);
+        ModificationTontineDTO nouvellesValeurs = new ModificationTontineDTO();
+        nouvellesValeurs.setNom("Nouveau nom");
 
         TontineDTO resultat = tontineService.updateTontine(6L, nouvellesValeurs).get();
 
         assertEquals(0, resultat.getNbCycles());
     }
 
-    // Caisse de prêts : le client envoie un solde de 1 000 000 à la création,
-    // le serveur l'ignore et part de 0 (sinon on prêterait de l'argent fictif).
+    // Caisse de prêts : le serveur part de 0 (sinon on prêterait de l'argent fictif).
+    // La règle (montantCaissePret) vient du DTO, l'état (solde) est imposé.
     @Test
     void createTontine_forceLeSoldeDeLaCaisseAZero() {
         Utilisateur a = new Utilisateur();
@@ -382,9 +389,11 @@ class TontineServiceTest {
         connecterCommeGestionnaire("770000101");
         when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Tontine demande = new Tontine();
+        CreationTontineDTO demande = new CreationTontineDTO();
+        demande.setNom("Mbambara");
         demande.setMontantCaissePret(new BigDecimal("500"));
-        demande.setSoldeCaissePret(new BigDecimal("1000000"));
+        demande.setFrequence(FrequenceTontine.MOIS);
+        demande.setIntervalle(1);
 
         TontineDTO resultat = tontineService.createTontine(demande);
 
@@ -392,7 +401,8 @@ class TontineServiceTest {
         assertEquals(0, new BigDecimal("500").compareTo(resultat.getMontantCaissePret()));
     }
 
-    // PUT : la règle (montantCaissePret) change, l'état (soldeCaissePret) jamais.
+    // PUT : la règle (montantCaissePret) change, l'état (soldeCaissePret) jamais
+    // (le DTO ne propose pas le solde).
     @Test
     void updateTontine_changeLeMontantDeCaisseMaisPasLeSolde() {
         Tontine enBase = tontineEnBase(StatutTontine.EN_ATTENTE);
@@ -401,9 +411,8 @@ class TontineServiceTest {
         connecterCommeGestionnaire("770000101");
         when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Tontine nouvellesValeurs = new Tontine();
+        ModificationTontineDTO nouvellesValeurs = new ModificationTontineDTO();
         nouvellesValeurs.setMontantCaissePret(new BigDecimal("1000"));
-        nouvellesValeurs.setSoldeCaissePret(new BigDecimal("1000000"));
 
         TontineDTO resultat = tontineService.updateTontine(6L, nouvellesValeurs).get();
 

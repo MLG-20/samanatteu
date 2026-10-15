@@ -1,5 +1,14 @@
 package com.samanatteu.controller.tontine;
 
+import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -10,9 +19,10 @@ import com.samanatteu.dto.onboarding.ImportMembreDTO;
 import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.pret.DemandePretDTO;
 import com.samanatteu.dto.pret.PretDTO;
+import com.samanatteu.dto.tontine.CreationTontineDTO;
 import com.samanatteu.dto.tontine.CycleDTO;
+import com.samanatteu.dto.tontine.ModificationTontineDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
-import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.service.onboarding.ImportMembreService;
 import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.service.pret.PretService;
@@ -20,16 +30,6 @@ import com.samanatteu.service.tontine.CycleService;
 import com.samanatteu.service.tontine.TontineService;
 
 import jakarta.validation.Valid;
-
-import java.util.List;
-
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 
 @RequestMapping("/tontine")
 @RestController
@@ -60,8 +60,8 @@ public class TontineController {
     // (GlobalExceptionHandler). Aussi sur updateTontine, sinon on pourrait
     // créer une tontine valide puis la modifier avec intervalle = 0.
     @PostMapping
-    public TontineDTO createTontine(@Valid @RequestBody Tontine tontine) {
-        return tontineService.createTontine(tontine);
+    public TontineDTO createTontine(@Valid @RequestBody CreationTontineDTO demande) {
+        return tontineService.createTontine(demande);
     }
 
     @PostMapping("/{id}/activer")
@@ -126,8 +126,8 @@ public class TontineController {
 
     @PutMapping("/{id}")
     public ResponseEntity<TontineDTO> updateTontine(@PathVariable Long id,
-            @Valid @RequestBody Tontine TontineModifier) {
-        return tontineService.updateTontine(id, TontineModifier)
+            @Valid @RequestBody ModificationTontineDTO modification) {
+        return tontineService.updateTontine(id, modification)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

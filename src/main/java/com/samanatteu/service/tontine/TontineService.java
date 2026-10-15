@@ -7,6 +7,8 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 
+import com.samanatteu.dto.tontine.CreationTontineDTO;
+import com.samanatteu.dto.tontine.ModificationTontineDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
@@ -53,9 +55,19 @@ public class TontineService {
                 .toList();
     }
 
-    public TontineDTO createTontine(Tontine tontine) {
+    public TontineDTO createTontine(CreationTontineDTO demande) {
         Utilisateur gestionnaire = utilisateurRepository.findByTelephone(utilisateurConnecte.telephone())
-                .orElseThrow(AccesRefuseException::new);
+                .orElseThrow(AccesRefuseException::new); // À REMETTRE juste après {
+
+        Tontine tontine = new Tontine();
+
+        tontine.setNom(demande.getNom());
+        tontine.setMontantPart(demande.getMontantPart());
+        tontine.setMontantCaissePret(demande.getMontantCaissePret());
+        tontine.setFrequence(demande.getFrequence());
+        tontine.setIntervalle(demande.getIntervalle());
+        tontine.setDescription(demande.getDescription());
+        tontine.setJourCotisation(demande.getJourCotisation());
         tontine.setGestionnaire(gestionnaire);
         tontine.setStatut(StatutTontine.EN_ATTENTE);
         // 0 = « pas encore calculé » (colonne NOT NULL) : nbCycles se déduit
@@ -70,23 +82,23 @@ public class TontineService {
         return convertiTontineDTO(enregistre);
     }
 
-    public Optional<TontineDTO> updateTontine(Long id, Tontine tontineModifier) {
+    public Optional<TontineDTO> updateTontine(Long id, ModificationTontineDTO modification) {
         return tontineRepository.findById(id).map(tontineExsitant -> {
             utilisateurConnecte.verifierGestionnaire(tontineExsitant);
 
             if (tontineExsitant.getStatut() != StatutTontine.EN_ATTENTE) {
                 throw new TontineNonModifiableException(tontineExsitant.getStatut().toString());
             }
-            tontineExsitant.setNom(tontineModifier.getNom());
-            tontineExsitant.setMontantPart(tontineModifier.getMontantPart());
+            tontineExsitant.setNom(modification.getNom());
+            tontineExsitant.setMontantPart(modification.getMontantPart());
             // montantCaissePret = une RÈGLE choisie par la gestionnaire :
             // recopiée. soldeCaissePret = un ÉTAT calculé par le serveur :
             // jamais recopié du JSON (sinon on prêterait de l'argent fictif).
-            tontineExsitant.setMontantCaissePret(tontineModifier.getMontantCaissePret());
-            tontineExsitant.setFrequence(tontineModifier.getFrequence());
-            tontineExsitant.setIntervalle(tontineModifier.getIntervalle());
-            tontineExsitant.setDescription(tontineModifier.getDescription());
-            tontineExsitant.setJourCotisation(tontineModifier.getJourCotisation());
+            tontineExsitant.setMontantCaissePret(modification.getMontantCaissePret());
+            tontineExsitant.setFrequence(modification.getFrequence());
+            tontineExsitant.setIntervalle(modification.getIntervalle());
+            tontineExsitant.setDescription(modification.getDescription());
+            tontineExsitant.setJourCotisation(modification.getJourCotisation());
             Tontine enregistre = tontineRepository.save(tontineExsitant);
             return convertiTontineDTO(enregistre);
         });
