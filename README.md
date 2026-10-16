@@ -725,7 +725,10 @@ Le développement suit un planning en 8 phases.
   paiement.
 - Un membre sorti d'une tontine déjà lancée n'a pas encore d'action dédiée (statut `SORTI`) : retirer un participant n'est possible que tant que la tontine est `EN_ATTENTE`.
 - Le refresh token n'est pas révoqué après usage (pas de stockage côté serveur).
-- Les champs `createdAt` / `updatedAt` ne sont pas encore alimentés.
+- Les champs `createdAt` / `updatedAt` sont alimentés via la classe mère `Auditable`
+  (`@MappedSuperclass`, `@PrePersist`/`@PreUpdate`, migration `V7`) ; les services gardent leur
+  `setCreatedAt` explicite quand la date est lue en mémoire avant le `save` (calcul d'expiration,
+  tests mockés — voir le journal ci-dessous).
 - Comment devient-on `GESTIONNAIRE` : décidé pour un modèle par **abonnement** (voir le journal
   ci-dessous), pas encore implémenté — aujourd'hui l'inscription permet encore de choisir
   `GESTIONNAIRE` ou `MEMBRE` librement.
@@ -776,6 +779,17 @@ reste lisible.
   `nombreParts` seul). Changer de rôle relèvera d'une
   action d'administration dédiée ; changer de téléphone (l'identité du JWT) d'une vérification par
   SMS.
+- **Les dates d'audit vivent dans une classe mère, pas copiées-collées.** `Auditable`
+  (`@MappedSuperclass` : pas de table, ses colonnes `created_at`/`updated_at` sont recopiées dans
+  chaque table fille) porte `@PrePersist`/`@PreUpdate` une seule fois pour 11 entités
+  (`participation` et `echeance_pret` n'ont aucun champ date et restent hors du dispositif ;
+  migration `V7` pour ajouter `updated_at` aux 11 tables qui ne l'avaient pas). Leçon apprise
+  douloureusement : supprimer les `setCreatedAt` des services a cassé 7 tests, et c'était un vrai
+  bug, pas un test trop strict — `InvitationService` calcule `expireAt` depuis `getCreatedAt()`
+  (`NullPointer` en prod), et `@PrePersist` ne tourne qu'au vrai `flush` JPA, jamais avec des
+  repositories mockés. Règle : si la date est **lue en mémoire avant le `save`**, le `set` explicite
+  reste obligatoire, `@PrePersist` n'est qu'un filet ; s'il n'est que relue plus tard en base,
+  `@PrePersist` suffit.
 - **Un seul point de lecture de l'utilisateur connecté.** Trois services lisaient eux-mêmes
   `SecurityContextHolder` et comparaient des chaînes `"ROLE_..."` écrites à la main (une faute de
   frappe y compile sans erreur). `UtilisateurConnecte` les remplace, avec l'enum `RoleUtilisateur`
