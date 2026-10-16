@@ -142,6 +142,7 @@ public class CycleService {
         cycle.setDateFinPrevue(dateFinPrevue);
         cycle.setStatut(StatutCycle.EN_COURS);
         cycle.setMontantCollecte(BigDecimal.ZERO);
+        // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
         cycle.setCreatedAt(LocalDateTime.now());
 
         // On sauvegarde AVANT de créer les cotisations : c'est save() qui donne
@@ -176,7 +177,9 @@ public class CycleService {
             cotisation.setMontantCaisseDu(tontine.getMontantCaissePret());
             cotisation.setMontantCaissePaye(BigDecimal.ZERO);
             cotisation.setStatut(StatutCotisation.EN_ATTENTE);
+            // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
             cotisation.setCreatedAt(LocalDateTime.now());
+
             cotisationRepository.save(cotisation);
         }
 

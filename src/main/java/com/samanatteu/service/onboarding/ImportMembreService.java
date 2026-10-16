@@ -164,6 +164,7 @@ public class ImportMembreService {
             importMembre.setStatut(StatutImportMembre.ECHEC);
         }
 
+        // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
         importMembre.setCreatedAt(LocalDateTime.now());
 
         ImportMembre enregistre = importMembreRepository.save(importMembre);

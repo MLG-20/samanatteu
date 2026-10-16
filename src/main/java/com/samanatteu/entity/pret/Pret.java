@@ -2,8 +2,8 @@ package com.samanatteu.entity.pret;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.pret.StatutPret;
@@ -27,7 +27,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Pret {
+public class Pret extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -72,6 +72,4 @@ public class Pret {
     @Column(name = "statut")
     private StatutPret statut;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 }

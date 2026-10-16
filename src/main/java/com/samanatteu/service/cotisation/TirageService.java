@@ -193,6 +193,7 @@ public class TirageService {
         tirage.setMontantGagne(montantGagne);
         tirage.setMontantVerse(montantVerse);
         tirage.setDateTirage(LocalDateTime.now());
+        // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
         tirage.setCreatedAt(LocalDateTime.now());
 
         // compareTo et non equals : equals compare aussi l'échelle

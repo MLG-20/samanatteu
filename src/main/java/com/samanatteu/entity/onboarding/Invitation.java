@@ -2,6 +2,7 @@ package com.samanatteu.entity.onboarding;
 
 import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.enums.onboarding.StatutInvitation;
 import com.samanatteu.enums.onboarding.TypeInvitation;
@@ -26,7 +27,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Invitation {
+public class Invitation extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -64,8 +65,5 @@ public class Invitation {
     @Enumerated(EnumType.STRING)
     @Column(name = "type")
     private TypeInvitation type;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 
 }

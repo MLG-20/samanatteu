@@ -127,6 +127,7 @@ public class PretService {
         pret.setDateAccord(LocalDate.now());
         pret.setDateDebutRemboursement(demande.getDateDebutRemboursement());
         pret.setStatut(StatutPret.ACTIF);
+        // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
         pret.setCreatedAt(LocalDateTime.now());
 
         Pret enregistre = pretRepository.save(pret);

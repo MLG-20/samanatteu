@@ -87,7 +87,10 @@ public class InvitationService {
         lien.setType(TypeInvitation.GROUPE);
         lien.setToken(genererToken());
         lien.setStatut(StatutInvitation.EN_ATTENTE);
+        // Obligatoire AVANT le calcul d'expireAt : getCreatedAt() serait null
+        // en mémoire (@PrePersist ne tourne qu'au vrai flush JPA).
         lien.setCreatedAt(LocalDateTime.now());
+
         // Calculé depuis createdAt : exactement 7 jours d'écart (CDC §4.7).
         lien.setExpireAt(lien.getCreatedAt().plusDays(7));
 
@@ -113,6 +116,8 @@ public class InvitationService {
         invitation.setNomPreRempli(demande.getNom());
         // Parts fixées dès l'invitation (gnari lokho possible) ; 1 si non précisé.
         invitation.setNombreParts(demande.getNombreParts() != null ? demande.getNombreParts() : 1);
+        // Obligatoire AVANT le calcul d'expireAt : getCreatedAt() serait null
+        // en mémoire (@PrePersist ne tourne qu'au vrai flush JPA).
         invitation.setCreatedAt(LocalDateTime.now());
         invitation.setExpireAt(invitation.getCreatedAt().plusDays(7));
         return convertiInvitationDTO(invitationRepository.save(invitation));

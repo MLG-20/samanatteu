@@ -1,8 +1,8 @@
 package com.samanatteu.entity.tontine;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.tontine.FrequenceTontine;
 import com.samanatteu.enums.tontine.StatutTontine;
@@ -30,7 +30,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 
-public class Tontine {
+public class Tontine extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -81,12 +81,6 @@ public class Tontine {
 
     @Column(name = "jour_cotisation")
     private Integer jourCotisation;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "statut")

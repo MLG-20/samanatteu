@@ -1,5 +1,6 @@
 package com.samanatteu.entity.pret;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.ModePaiement;
@@ -28,7 +29,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Transaction {
+public class Transaction extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -70,6 +71,4 @@ public class Transaction {
     @Column(name = "date_transaction")
     private LocalDateTime dateTransaction;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 }

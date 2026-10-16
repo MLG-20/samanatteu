@@ -3,6 +3,7 @@ package com.samanatteu.entity.cotisation;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.enums.ModePaiement;
@@ -28,7 +29,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 
-public class Cotisation {
+public class Cotisation extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -70,8 +71,5 @@ public class Cotisation {
     @Enumerated(EnumType.STRING)
     @Column(name = "statut")
     private StatutCotisation statut;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 
 }

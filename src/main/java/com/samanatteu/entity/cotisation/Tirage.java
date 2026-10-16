@@ -3,6 +3,7 @@ package com.samanatteu.entity.cotisation;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.tontine.Cycle;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.enums.cotisation.StatutTirage;
@@ -26,7 +27,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Tirage {
+public class Tirage extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -55,6 +56,4 @@ public class Tirage {
     @Column(name = "statut")
     private StatutTirage statut;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 }

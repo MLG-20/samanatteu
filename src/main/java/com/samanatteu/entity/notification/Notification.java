@@ -2,6 +2,7 @@ package com.samanatteu.entity.notification;
 
 import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.notification.CanalNotification;
 import com.samanatteu.enums.notification.StatutNotification;
@@ -26,7 +27,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Notification {
+public class Notification extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -58,6 +59,4 @@ public class Notification {
     @Column(name = "date_envoi")
     private LocalDateTime dateEnvoi;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 }

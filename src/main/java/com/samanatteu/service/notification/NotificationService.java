@@ -68,7 +68,9 @@ public class NotificationService {
         notification.setType(type);
         notification.setCanal(canal);
         notification.setMessage(message);
+        // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
         notification.setCreatedAt(LocalDateTime.now());
+
         if (canal == CanalNotification.EMAIL) {
             notification.setTitre(sujet(type));
         }

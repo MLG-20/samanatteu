@@ -1,7 +1,8 @@
 package com.samanatteu.entity.utilisateur;
 
-import java.time.LocalDateTime;
+import java.util.List;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 
@@ -17,7 +18,6 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.util.List;
 
 @Entity
 @Table(name = "utilisateur")
@@ -25,7 +25,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 
-public class Utilisateur {
+public class Utilisateur extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -51,12 +51,6 @@ public class Utilisateur {
 
     @Column(name = "actif")
     private Boolean actif;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     // Écrit dans chaque refresh token. L'augmenter de 1 (déconnexion, nouveau
     // mot de passe) rend inutilisables tous les tokens fabriqués avant.

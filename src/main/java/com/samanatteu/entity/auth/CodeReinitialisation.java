@@ -2,6 +2,7 @@ package com.samanatteu.entity.auth;
 
 import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 
 import jakarta.persistence.Column;
@@ -23,7 +24,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class CodeReinitialisation {
+public class CodeReinitialisation extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -46,6 +47,4 @@ public class CodeReinitialisation {
     @Column(name = "utilise")
     private boolean utilise;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 }

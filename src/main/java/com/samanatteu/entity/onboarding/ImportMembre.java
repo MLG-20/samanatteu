@@ -1,7 +1,6 @@
 package com.samanatteu.entity.onboarding;
 
-import java.time.LocalDateTime;
-
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.enums.onboarding.StatutImportMembre;
 
@@ -24,7 +23,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class ImportMembre {
+public class ImportMembre extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -52,6 +51,4 @@ public class ImportMembre {
     @Column(name = "statut")
     private StatutImportMembre statut;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 }

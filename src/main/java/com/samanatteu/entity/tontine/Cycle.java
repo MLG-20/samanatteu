@@ -2,8 +2,8 @@ package com.samanatteu.entity.tontine;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
+import com.samanatteu.entity.commun.Auditable;
 import com.samanatteu.enums.tontine.StatutCycle;
 
 import jakarta.persistence.Column;
@@ -25,7 +25,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Cycle {
+public class Cycle extends Auditable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -55,8 +55,5 @@ public class Cycle {
     @Enumerated(EnumType.STRING)
     @Column(name = "statut")
     private StatutCycle statut;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
 
 }

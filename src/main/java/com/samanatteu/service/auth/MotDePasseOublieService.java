@@ -50,6 +50,7 @@ public class MotDePasseOublieService {
         codeReinitialisation.setUtilisateur(utilisateur);
         codeReinitialisation.setCodeHache(passwordEncoder.encode(code));
         codeReinitialisation.setExpireAt(LocalDateTime.now().plusMinutes(10));
+        // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
         codeReinitialisation.setCreatedAt(LocalDateTime.now());
         codeReinitialisationRepository.save(codeReinitialisation);
 

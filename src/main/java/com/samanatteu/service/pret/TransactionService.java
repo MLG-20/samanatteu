@@ -33,8 +33,10 @@ public class TransactionService {
         boolean estGestionnaire = utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE);
 
         List<Transaction> transactions = estGestionnaire
-        ? transactionRepository.findByTontineGestionnaireTelephoneOrderByDateTransactionDesc(utilisateurConnecte.telephone())
-        :transactionRepository.findByMembreTelephoneOrderByDateTransactionDesc(utilisateurConnecte.telephone());
+                ? transactionRepository
+                        .findByTontineGestionnaireTelephoneOrderByDateTransactionDesc(utilisateurConnecte.telephone())
+                : transactionRepository
+                        .findByMembreTelephoneOrderByDateTransactionDesc(utilisateurConnecte.telephone());
         return transactions.stream()
                 .map(this::convertiTransactionDTO)
                 .toList();
@@ -64,7 +66,9 @@ public class TransactionService {
         transaction.setReferenceId(referenceId);
         transaction.setDescription(description);
         transaction.setDateTransaction(LocalDateTime.now());
+        // Lu en mémoire par les tests mockés (@PrePersist ne tourne qu'au vrai flush JPA).
         transaction.setCreatedAt(LocalDateTime.now());
+
         transactionRepository.save(transaction);
 
     }
