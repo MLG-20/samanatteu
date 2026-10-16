@@ -21,15 +21,20 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "transaction")
 @Getter
 @Setter
-@NoArgsConstructor
 public class Transaction extends Auditable {
+    // Constructeur sans argument exigé par JPA/Hibernate.
+    // Écrit à la main plutôt que Lombok @NoArgsConstructor : Lombok 1.18.46
+    // génère un constructeur vide (sans super()) pour les filles d'Auditable
+    // sur ce JDK, et la JVM refuse la classe au chargement.
+    public Transaction() {
+        super();
+    }
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

@@ -16,16 +16,21 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "utilisateur")
 @Getter
 @Setter
-@NoArgsConstructor
 
 public class Utilisateur extends Auditable {
+    // Constructeur sans argument exigé par JPA/Hibernate.
+    // Écrit à la main plutôt que Lombok @NoArgsConstructor : Lombok 1.18.46
+    // génère un constructeur vide (sans super()) pour les filles d'Auditable
+    // sur ce JDK, et la JVM refuse la classe au chargement.
+    public Utilisateur() {
+        super();
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

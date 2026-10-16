@@ -21,16 +21,21 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "tontine")
 @Getter
 @Setter
-@NoArgsConstructor
 
 public class Tontine extends Auditable {
+    // Constructeur sans argument exigé par JPA/Hibernate.
+    // Écrit à la main plutôt que Lombok @NoArgsConstructor : Lombok 1.18.46
+    // génère un constructeur vide (sans super()) pour les filles d'Auditable
+    // sur ce JDK, et la JVM refuse la classe au chargement.
+    public Tontine() {
+        super();
+    }
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

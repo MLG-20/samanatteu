@@ -17,15 +17,19 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity 
 @Table (name = "echeance_pret")
 @Getter 
-@Setter 
-@NoArgsConstructor 
+@Setter
 public class EcheancePret {
+    // Constructeur sans argument exigé par JPA/Hibernate.
+    // Écrit à la main : Lombok @NoArgsConstructor génère parfois un
+    // constructeur vide sur ce JDK (ClassFormatError au chargement).
+    public EcheancePret() {
+        super();
+    }
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
