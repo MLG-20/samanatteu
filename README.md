@@ -38,6 +38,7 @@ cycles, les cotisations, les tirages et les prêts.
 - Lombok
 - Import de fichiers : [OpenCSV](https://opencsv.sourceforge.net/) 5.9 (CSV), [Apache POI](https://poi.apache.org/) 5.4.1 (Excel `.xlsx`)
 - Tests : JUnit 5, Mockito, MockMvc, Spring Security Test
+- Doc API : [springdoc-openapi](https://springdoc.org/) 3.1.1 (OpenAPI 3 + Swagger UI, §7.1 du CDC)
 
 ## Démarrage rapide
 
@@ -84,6 +85,13 @@ dossier**.
 
 L'API écoute sur `http://localhost:8080`. Pour un autre port :
 `./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=8081`.
+
+### Explorer l'API (Swagger)
+
+La doc se génère seule au démarrage : `http://localhost:8080/swagger-ui.html` (JSON brut :
+`/v3/api-docs`). Bouton **Authorize** → `Bearer <accessToken>` (récupéré via `POST /auth/login`
+dans la page même), puis chaque route verrouillée s'exécute avec le token. Plus besoin de Postman
+pour les essais manuels.
 
 ### Premier essai
 
@@ -790,6 +798,11 @@ reste lisible.
   repositories mockés. Règle : si la date est **lue en mémoire avant le `save`**, le `set` explicite
   reste obligatoire, `@PrePersist` n'est qu'un filet ; s'il n'est que relue plus tard en base,
   `@PrePersist` suffit.
+- **La doc API se génère à partir du code, elle ne s'écrit pas.** `springdoc-openapi` v3 (Boot 4)
+  scanne les controllers/DTO au démarrage : `/v3/api-docs` (JSON) + `/swagger-ui.html` (page de
+  test). Les 3 routes doc sont en `permitAll` **avant** `anyRequest` (la doc décrit les routes, pas
+  les données — la verrouiller obligerait à un token juste pour la lire). Le bouton Authorize vient
+  de `SwaggerConfig` (schéma `bearer-jwt`) : la doc suggère le JWT, `SecurityConfig` décide.
 - **Un seul point de lecture de l'utilisateur connecté.** Trois services lisaient eux-mêmes
   `SecurityContextHolder` et comparaient des chaînes `"ROLE_..."` écrites à la main (une faute de
   frappe y compile sans erreur). `UtilisateurConnecte` les remplace, avec l'enum `RoleUtilisateur`
