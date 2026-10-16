@@ -70,6 +70,7 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/dashboard/gestionnaire/**").hasRole("GESTIONNAIRE")
                                                 .requestMatchers(HttpMethod.GET, "/dashboard/membre/**").hasRole("MEMBRE")
                                                 .requestMatchers(HttpMethod.GET, "/dashboard/admin/**").hasRole("ADMIN")
+                                                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                                                 .anyRequest().authenticated())
                                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
