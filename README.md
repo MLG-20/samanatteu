@@ -355,7 +355,7 @@ EN_ATTENTE ──rejoindre (individuelle)──▶ ACCEPTE
 (expiration : jugée sur expireAt, quel que soit le statut)
 ```
 
-### Notifications (implémenté, testé — envoi simulé)
+### Notifications (implémenté, testé — SMS simulé, email SMTP réel)
 
 Les membres sont prévenus **par SMS toujours, et par email en plus** s'ils en ont un
 (CDC v1.1 §4.10). Aucune route ne permet d'envoyer une notification : comme le journal
@@ -377,10 +377,23 @@ Chaque envoi laisse une ligne en base (canal `SMS` ou `EMAIL`, statut `ENVOYE` o
 preuve en cas de litige (« je n'ai jamais reçu le rappel »), et envois en échec relançables plus
 tard.
 
-**Envoi simulé.** Il n'y a pas encore de compte chez un fournisseur de SMS : les messages sont
+**SMS simulé, email réel.** Il n'y a pas encore de compte chez un fournisseur de SMS : les SMS sont
 écrits dans la console (`SMS (simulé) à 771000001 : …`). Brancher Orange SMS API ou Twilio
 consistera à écrire une classe de plus, sans toucher aux services (voir
 [Architecture](#architecture)).
+
+**Les emails partent vraiment**, en HTML, via SMTP (`spring-boot-starter-mail`) avec des modèles
+Thymeleaf (`templates/emails/*.html`). En développement, le serveur SMTP local **Mailpit** les
+recueille (rien ne sort sur Internet) :
+
+```bash
+docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
+# puis http://localhost:8025 pour lire les emails reçus
+```
+
+L'implémentation se choisit par configuration, pas par code : `samanatteu.mail.enabled=true` →
+`EnvoyeurEmailSmtp` ; sinon (ou absent) → `EnvoyeurEmailConsole`, qui écrit dans les logs et
+laisse l'application démarrer sans serveur SMTP. Les deux ne coexistent jamais.
 
 ### Import de membres par fichier CSV ou Excel (implémenté, testé)
 
@@ -541,10 +554,13 @@ Choix notables :
   « a-t-il tel rôle ? » à `UtilisateurConnecte` (`telephone()`, `aLeRole(RoleUtilisateur)`), seul
   endroit, avec `JwtAuthFilter`, à toucher au `SecurityContextHolder`.
 - **Les services dépendent d'interfaces, pas de fournisseurs.** `NotificationService` reçoit un
-  `EnvoyeurSms` et un `EnvoyeurEmail` (interfaces). Aujourd'hui, Spring injecte
-  `EnvoyeurSmsConsole` / `EnvoyeurEmailConsole`, qui écrivent dans la console ; demain, une classe
-  `EnvoyeurSmsOrange implements EnvoyeurSms` appellera la vraie API, et aucun service ne changera.
-  Les tests en profitent : ils remplacent les envoyeurs par des faux pour simuler une panne.
+  `EnvoyeurSms` et un `EnvoyeurEmail` (interfaces). `EnvoyeurSmsConsole` écrit dans la console
+  (pas encore de fournisseur SMS) ; `EnvoyeurEmailSmtp` envoie vraiment par SMTP, et
+  `EnvoyeurEmailConsole` prend le relais si le SMTP est désactivé. Les deux implémentations d'un
+  même contrat ne doivent jamais coexister : `@ConditionalOnProperty` (sur `samanatteu.mail.enabled`)
+  fait la bascule, et un jour `EnvoyeurSmsOrange implements EnvoyeurSms` suffira — sans toucher
+  aux services. Les tests en profitent : ils remplacent les envoyeurs par des faux pour simuler
+  une panne.
 - **Une règle sur une entité vit dans l'entité** : « cette tontine est-elle gérée par tel
   utilisateur ? » est `Tontine.estGereePar(telephone)`. Son usage (« sinon 403 ») est
   `UtilisateurConnecte.verifierGestionnaire(tontine)`, partagé par les services de tontines,
@@ -687,7 +703,7 @@ Le développement suit un planning en 8 phases.
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
-| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS + email, rappels J-3, envoi simulé), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur et « mot de passe oublié » |
+| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS simulé, **email SMTP réel en HTML Thymeleaf**, rappels J-3), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur SMS |
 | 7-8 | Tableaux de bord par rôle, finitions | ✅ tableaux de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser), du membre (ses tontines, ce qu'il doit, ses prêts, ses gains) et de l'administrateur (comptes par rôle, tontines par statut) |
 
 ### Limites connues
@@ -707,9 +723,11 @@ Le développement suit un planning en 8 phases.
 - L'import n'est pas transactionnel : s'il est interrompu au milieu (panne), les lignes déjà
   traitées restent importées sans rapport enregistré ; le relancer est sans danger (les membres
   déjà inscrits sont signalés, pas dupliqués).
-- Les SMS et emails sont **simulés** (écrits dans la console) : aucun fournisseur (Orange SMS API,
-  Twilio, serveur SMTP) n'est encore branché. Les emails sont en texte brut (pas de modèle HTML
-  Thymeleaf).
+- Les **SMS** sont **simulés** (écrits dans la console) : aucun fournisseur (Orange SMS API,
+  Twilio) n'est encore branché. Les **emails** partent vraiment par SMTP, en HTML Thymeleaf.
+- Un seul modèle d'email pour l'instant (`templates/emails/generique.html`) : le message est
+  construit en texte par les services, puis habillé par le template. Un modèle par type
+  (montant, date, lien) demanderait de passer un contexte structuré au lieu d'un message.
 - Les invitations ne sont pas **envoyées** par l'application : la gestionnaire copie le lien dans
   WhatsApp. Un SMS d'invitation individuelle demanderait de tracer un envoi vers un numéro qui n'a
   pas encore de compte (`notification.destinataire` est obligatoire) : écarté pour l'instant.
