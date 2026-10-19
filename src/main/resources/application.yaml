@@ -15,6 +15,24 @@ spring:
   flyway:
     # Base déjà remplie sans historique : marquée « version 1 » sans rejouer V1.
     baseline-on-migrate: true
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+# Activation de l'envoi réel par SMTP (CDC §4.10). Si false ou absent,
+# EnvoyeurEmailConsole prend le relais : les emails finissent dans les logs
+# et l'application démarre sans serveur SMTP.
+# Hors du bloc "spring:" : @ConditionalOnProperty lit la propriété à la racine
+# de l'environnement, pas sous le préfixe spring.
+samanatteu:
+  mail:
+    enabled: true
 
 jwt:
   secret: ${JWT_SECRET}

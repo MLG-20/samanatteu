@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${sujet}">SamaNatteu</title>
+</head>
+
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+    <div style="max-width: 600px; margin: auto; background: white; padding: 24px; border-radius: 8px;">
+        <h2 style="color: #2c6e49;" th:text="${sujet}">Objet</h2>
+
+        <!-- th:text : la variable EST le texte de l'élément. -->
+        <p th:text="${message}">Le message</p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+        <p style="color: #888; font-size: 12px;">
+            SamaNatteu — message automatique, ne pas répondre.
+        </p>
+    </div>
+</body>
+
+</html>
