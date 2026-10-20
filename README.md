@@ -313,6 +313,7 @@ que cette action.
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
 | `GET` | `/transaction` | `GESTIONNAIRE`, `MEMBRE` | un gestionnaire voit le journal de **ses** tontines ; un membre **uniquement ses propres lignes** ; du plus récent au plus ancien |
+| `GET` | `/transaction/{id}/recu` | le membre concerné, `GESTIONNAIRE` de la tontine | le **reçu PDF** du paiement (téléchargement) : tontine, membre, montant, mode de paiement, référence, date |
 
 Chaque ligne porte : membre, tontine, type, sens, montant (toujours positif, c'est le sens qui
 donne la direction), mode de paiement et référence externe (Wave, Orange Money…) quand ils sont
@@ -701,7 +702,7 @@ Le développement suit un planning en 8 phases.
 | 1 | Bases : projet, entités, base PostgreSQL | ✅ terminée |
 | 2 | Authentification et rôles | ✅ connexion, tokens, rôles, changement de mot de passe, mot de passe oublié (code par SMS), déconnexion |
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
-| 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier) ; reste le reçu PDF |
+| 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier), **reçu PDF d'un paiement** (`GET /transaction/{id}/recu`) |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
 | 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS simulé, **email SMTP réel en HTML Thymeleaf**, rappels J-3), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur SMS |
 | 7-8 | Tableaux de bord par rôle, finitions | ✅ tableaux de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser), du membre (ses tontines, ce qu'il doit, ses prêts, ses gains) et de l'administrateur (comptes par rôle, tontines par statut) |
@@ -752,8 +753,8 @@ Le développement suit un planning en 8 phases.
   font des requêtes N+1. Négligeable à l'échelle d'une tontine, à optimiser dans une étape dédiée.
 - Un corps JSON mal formé n'a pas encore de traitement dédié dans `GlobalExceptionHandler`
   (`HttpMessageNotReadableException` n'est pas une `ErrorResponse`) : à vérifier et ramener à 400.
-- Le reçu PDF par paiement reste à faire ; il pourra s'appuyer sur la ligne du journal de chaque
-  paiement.
+- Le reçu PDF ne couvre que le **journal** : les gains, les prêts et les remboursements n'ont pas
+  de reçu (le CDC n'en prévoit pas), et le reçu ne dit rien du reste à payer.
 - Un membre sorti d'une tontine déjà lancée n'a pas encore d'action dédiée (statut `SORTI`) : retirer un participant n'est possible que tant que la tontine est `EN_ATTENTE`.
 - Le refresh token n'est pas révoqué après usage (pas de stockage côté serveur).
 - Les champs `createdAt` / `updatedAt` sont alimentés via la classe mère `Auditable`
@@ -946,7 +947,7 @@ reste lisible.
   une échéance ne gardaient que les détails de leur **dernier** paiement : un membre qui payait en
   deux fois (CASH puis Wave) perdait la trace du premier. La table `transaction` reçoit désormais
   une ligne pour chaque mouvement (cotisation, gain, prêt, remboursement), jamais modifiée ni
-  supprimée. C'est la base de l'historique d'un membre (US-M01) et du futur reçu PDF.
+  supprimée. C'est la base de l'historique d'un membre (US-M01) et du reçu PDF.
 - **Le journal est une conséquence, pas une ressource qu'on écrit.** Il n'y a aucun
   `POST /transaction` : chaque ligne est écrite par le serveur pendant l'action qui déplace
   l'argent (paiement, tirage, prêt…), dans la même `@Transactional`. Une route d'écriture

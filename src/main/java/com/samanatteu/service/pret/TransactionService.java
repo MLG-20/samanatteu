@@ -10,6 +10,7 @@ import com.samanatteu.dto.pret.TransactionDTO;
 import com.samanatteu.entity.pret.Transaction;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.exception.pret.TransactionIntrouvableException;
 import com.samanatteu.enums.ModePaiement;
 import com.samanatteu.enums.pret.SensTransaction;
 import com.samanatteu.enums.pret.TypeTransaction;
@@ -21,10 +22,32 @@ import com.samanatteu.security.UtilisateurConnecte;
 public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final UtilisateurConnecte utilisateurConnecte;
+    private final RecuPDFService recuPDFService;
 
-    public TransactionService(TransactionRepository transactionRepository, UtilisateurConnecte utilisateurConnecte) {
+    public TransactionService(TransactionRepository transactionRepository, UtilisateurConnecte utilisateurConnecte,
+            RecuPDFService recuPDFService) {
         this.transactionRepository = transactionRepository;
         this.utilisateurConnecte = utilisateurConnecte;
+        this.recuPDFService = recuPDFService;
+    }
+
+    // Le reçu PDF d'un paiement.
+    //
+    // Droit : le MEMBRE qui a payé, ou la GESTIONNAIRE de la tontine (elle doit
+    // pouvoir donner un reçu papier). L'ADMIN est refusé : il ne voit pas le
+    // contenu des tontines de ses clients (règle d'architecture).
+    public byte[] genererRecu(Long id) {
+        Transaction transaction = transactionRepository.findById(id)
+                .orElseThrow(() -> new TransactionIntrouvableException(id));
+
+        boolean estMembreConcerne = transaction.getMembre().getTelephone()
+                .equals(utilisateurConnecte.telephone());
+        if (!estMembreConcerne) {
+            // Pas le membre : seule la gestionnaire de la tontine a le droit.
+            // verifierGestionnaire lève AccesRefuseException (403) si ce n'est pas elle.
+            utilisateurConnecte.verifierGestionnaire(transaction.getTontine());
+        }
+        return recuPDFService.genererRecu(transaction);
     }
 
     // Lecture filtrée (option 1) : gestionnaire → journal de SES tontines ;

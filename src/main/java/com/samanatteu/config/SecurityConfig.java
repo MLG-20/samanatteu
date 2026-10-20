@@ -61,7 +61,7 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/tirage").hasAnyRole("GESTIONNAIRE", "MEMBRE")
                                                 .requestMatchers(HttpMethod.POST, "/pret/**").hasRole("GESTIONNAIRE")
                                                 .requestMatchers(HttpMethod.GET, "/pret", "/echeancePret").hasAnyRole("GESTIONNAIRE", "MEMBRE")
-                                                .requestMatchers(HttpMethod.GET, "/transaction").hasAnyRole("GESTIONNAIRE", "MEMBRE")
+                                                .requestMatchers(HttpMethod.GET, "/transaction", "/transaction/**").hasAnyRole("GESTIONNAIRE", "MEMBRE")
                                                 .requestMatchers(HttpMethod.GET, "/invitation/*").permitAll()
                                                 .requestMatchers(HttpMethod.POST, "/invitation/*/rejoindre").hasRole("MEMBRE")
                                                 .requestMatchers(HttpMethod.GET, "/invitation").hasRole("GESTIONNAIRE")
