@@ -125,6 +125,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
+		<!-- Envoi réel de SMS par Twilio (CDC §4.10). -->
+		<dependency>
+			<groupId>com.twilio.sdk</groupId>
+			<artifactId>twilio</artifactId>
+			<version>13.1.0</version>
+		</dependency>
 		<!-- Modèles d'emails en HTML (templates/*.html). -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
