@@ -34,6 +34,7 @@ import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
+import com.samanatteu.exception.utilisateur.EmailObligatoireException;
 import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
@@ -75,6 +76,14 @@ class UtilisateurServiceTest {
                         List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
     }
 
+    // L'ADMIN : il peut creer un autre ADMIN (c'est la seule personne qui
+    // puisse, l'inscription etant publique).
+    private void connecterCommeAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("+221770000099", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+    }
+
     private CreationUtilisateurDTO inscription(RoleUtilisateur role) {
         CreationUtilisateurDTO dto = new CreationUtilisateurDTO();
         dto.setNom("Fall");
@@ -83,6 +92,54 @@ class UtilisateurServiceTest {
         dto.setMotDePasse("motdepasse123");
         dto.setRole(role);
         return dto;
+    }
+
+    // Règle : l'email est OBLIGATOIRE pour une gestionnaire (elle paie, on
+    // doit pouvoir la facturer) et pour un administrateur. Un membre, lui,
+    // l'a toujours facultatif.
+    @Test
+    void createUtilisateur_uneGestionnaireSansEmail_estRefusee() {
+        connecterCommeAnonyme();
+
+        assertThrows(EmailObligatoireException.class,
+                () -> utilisateurService.createUtilisateur(inscription(RoleUtilisateur.GESTIONNAIRE)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    @Test
+    void createUtilisateur_unAdminSansEmail_estRefuse() {
+        connecterCommeAdmin();
+
+        assertThrows(EmailObligatoireException.class,
+                () -> utilisateurService.createUtilisateur(inscription(RoleUtilisateur.ADMIN)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    // Règle : un MEMBRE sans email, c'est toujours accepté (beaucoup n'ont
+    // pas d'email).
+    @Test
+    void createUtilisateur_unMembreSansEmail_estAccepte() {
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        connecterCommeAnonyme();
+
+        UtilisateurDTO resultat = utilisateurService.createUtilisateur(inscription(RoleUtilisateur.MEMBRE));
+
+        assertEquals(RoleUtilisateur.MEMBRE, resultat.getRole());
+    }
+
+    // Règle : une gestionnaire AVEC un email passe (et l'unicité est vérifiée).
+    @Test
+    void createUtilisateur_uneGestionnaireAvecEmail_estAcceptee() {
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        connecterCommeAnonyme();
+        CreationUtilisateurDTO dto = inscription(RoleUtilisateur.GESTIONNAIRE);
+        dto.setEmail("gestionnaire@example.sn");
+
+        UtilisateurDTO resultat = utilisateurService.createUtilisateur(dto);
+
+        assertEquals("gestionnaire@example.sn", resultat.getEmail());
     }
 
     @Test
