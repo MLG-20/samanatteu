@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import com.samanatteu.dto.tontine.CreationTontineDTO;
 import com.samanatteu.dto.tontine.ModificationTontineDTO;
 import com.samanatteu.dto.tontine.TontineDTO;
+import com.samanatteu.entity.abonnement.Abonnement;
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
@@ -24,20 +25,25 @@ import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.abonnement.AbonnementService;
 
 @Service
 public class TontineService {
+    // test incremental
     private final TontineRepository tontineRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final ParticipationRepository participationRepository;
+    private final AbonnementService abonnementService;
     private final UtilisateurConnecte utilisateurConnecte;
 
     public TontineService(TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository,
-            ParticipationRepository participationRepository, UtilisateurConnecte utilisateurConnecte) {
+            ParticipationRepository participationRepository, UtilisateurConnecte utilisateurConnecte,
+            AbonnementService abonnementService) {
         this.tontineRepository = tontineRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.participationRepository = participationRepository;
         this.utilisateurConnecte = utilisateurConnecte;
+        this.abonnementService = abonnementService;
     }
 
     public List<TontineDTO> listTontine() {
@@ -58,6 +64,14 @@ public class TontineService {
     public TontineDTO createTontine(CreationTontineDTO demande) {
         Utilisateur gestionnaire = utilisateurRepository.findByTelephone(utilisateurConnecte.telephone())
                 .orElseThrow(AccesRefuseException::new); // À REMETTRE juste après {
+
+        // Droit AVANT toute écriture : une gestionnaire sans abonnement actif, ou
+        // qui a atteint le quota de sa formule, ne doit pas créer de tontine.
+        // (Les tontines DÉJÀ créées continuent de fonctionner : les membres ont
+        // de l'argent en jeu.) Le contrôle est ici, pas dans le contrôleur.
+        Abonnement abonnement = abonnementService.exigerAbonnementActif(utilisateurConnecte.telephone());
+        abonnementService.verifierQuotaTontines(abonnement,
+                (int) tontineRepository.countByGestionnaireTelephone(utilisateurConnecte.telephone()));
 
         Tontine tontine = new Tontine();
 

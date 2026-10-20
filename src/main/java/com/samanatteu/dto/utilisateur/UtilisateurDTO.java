@@ -5,7 +5,6 @@ import java.time.LocalDateTime;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 
@@ -14,8 +13,15 @@ import lombok.Setter;
 // même si l'entité en base le contient toujours pour le login.
 @Getter
 @Setter
-@NoArgsConstructor
 public class UtilisateurDTO {
+    // Constructeur sans argument : Jackson en a besoin pour deserialiser
+    // le JSON en DTO. Ecrit a la main, pas genere par Lombok : sur ce JDK,
+    // @NoArgsConstructor produit parfois un constructeur VIDE (sans appel a
+    // super()), et la JVM refuse alors de charger la classe.
+    public UtilisateurDTO() {
+        super();
+    }
+
     private Long id;
 
     private String nom;

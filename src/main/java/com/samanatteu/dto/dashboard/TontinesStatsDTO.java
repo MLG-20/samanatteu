@@ -1,7 +1,6 @@
 package com.samanatteu.dto.dashboard;
 
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Bloc « Tontines » du tableau de bord admin : combien de tontines par
@@ -10,8 +9,15 @@ import lombok.Setter;
 // dédié et non l'entité Tontine.
 @Getter
 @Setter
-@NoArgsConstructor
 public class TontinesStatsDTO {
+    // Constructeur sans argument : Jackson en a besoin pour deserialiser
+    // le JSON en DTO. Ecrit a la main, pas genere par Lombok : sur ce JDK,
+    // @NoArgsConstructor produit parfois un constructeur VIDE (sans appel a
+    // super()), et la JVM refuse alors de charger la classe.
+    public TontinesStatsDTO() {
+        super();
+    }
+
 
     // Toutes les tontines, tous statuts confondus (count() du repository).
     private Long total;

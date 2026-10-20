@@ -6,15 +6,21 @@ import java.time.LocalDate;
 import com.samanatteu.enums.pret.StatutPret;
 
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Une ligne « Prêts en cours » du tableau de bord gestionnaire : à qui il a
 // prêté, combien il reste à récupérer, et quand tombe la prochaine échéance.
 @Getter
 @Setter
-@NoArgsConstructor
 public class PretEnCoursDTO {
+    // Constructeur sans argument : Jackson en a besoin pour deserialiser
+    // le JSON en DTO. Ecrit a la main, pas genere par Lombok : sur ce JDK,
+    // @NoArgsConstructor produit parfois un constructeur VIDE (sans appel a
+    // super()), et la JVM refuse alors de charger la classe.
+    public PretEnCoursDTO() {
+        super();
+    }
+
     private Long pretId;
 
     private String tontineNom;

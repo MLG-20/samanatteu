@@ -6,15 +6,21 @@ import java.time.LocalDateTime;
 import com.samanatteu.enums.tontine.FrequenceTontine;
 import com.samanatteu.enums.tontine.StatutTontine;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // gestionnaireId (Long) et non l'entité Utilisateur : sinon son motDePasse serait exposé
 // en cascade dans le JSON de /tontine.
 @Getter
 @Setter
-@NoArgsConstructor
 public class TontineDTO {
+    // Constructeur sans argument : Jackson en a besoin pour deserialiser
+    // le JSON en DTO. Ecrit a la main, pas genere par Lombok : sur ce JDK,
+    // @NoArgsConstructor produit parfois un constructeur VIDE (sans appel a
+    // super()), et la JVM refuse alors de charger la classe.
+    public TontineDTO() {
+        super();
+    }
+
     private Long id;
 
     private String nom;

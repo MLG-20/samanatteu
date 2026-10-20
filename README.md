@@ -805,10 +805,24 @@ reste lisible.
   reçoivent de simples ids (`membreId`, `tontineId`, `gestionnaireId`) ; le service recharge
   toujours la vraie ressource en base avant de contrôler quoi que ce soit dessus.
 - **Comment devient-on `GESTIONNAIRE` : par abonnement.** Dans un SaaS, c'est l'organisateur qui
-  paie, pas les membres. Prévu en 3 étapes futures : (1) une entité `Abonnement` (formule, statut,
-  échéance) avec la règle « créer une tontine exige un abonnement actif », (2) une activation
-  manuelle par l'ADMIN pour développer et tester sans paiement réel, (3) un vrai paiement (Wave,
-  Orange Money…), dépendant de la phase notifications. Non implémenté à ce stade.
+  paie, pas les membres. L'abonnement est rattaché à la **gestionnaire** (le client de la
+  plateforme), pas à une tontine : une cliente qui gère 10 tontines a UN abonnement. Règle : une
+  gestionnaire sans abonnement **actif** ne peut pas **créer** de tontine (ni inviter, ni
+  importer) ; les tontines **déjà créées** continuent de fonctionner, parce que les membres ont de
+  l'argent en jeu. L'expiration est **calculée** sur la date de fin (aucun job ne peut être en
+  retard) ; seuls `SUSPENDU` et `RESILIE` sont des décisions stockées. L'activation est
+  **manuelle** par l'ADMIN (pas de paiement réel pour l'instant) ; le jour où Wave ou Orange Money
+  arrive, cette route disparaît au profit d'un webhook.
+- **Les formules d'abonnement sont des DONNÉES, pas du code.** Elles sont en table (`formule`) avec
+  leurs quotas et leur prix : l'ADMIN les modifie depuis son dashboard (`/formule`) sans
+  redéployer l'application. Un enum dans le code obligerait à compiler pour changer un prix — et
+  l'ADMIN ne peut pas redéployer l'application de ses clientes. `DECOUVERTE` / `PRO` / `MAX` sont
+  les formules de départ, avec des **chiffres provisoires**.
+- **L'email est obligatoire pour les gestionnaires et les administrateurs, facultatif pour les
+  membres.** Ce sont ceux qu'on facture et qu'on doit pouvoir joindre ; beaucoup de membres n'ont
+  pas d'email. Contrôle dans le service (il dépend du rôle, que Bean Validation ne sait pas
+  exprimer sur un champ) **et** en base (contrainte `NOT VALID` : les anciennes lignes sont
+  « graciées », les nouvelles doivent la respecter).
 - **Un membre qui quitte une tontine active n'est pas supprimé.** Ses cotisations passées font
   partie de l'historique financier ; l'effacer les effacerait aussi. La solution prévue est un
   troisième statut de participation, `SORTI` (déjà dans l'enum), via une action dédiée
@@ -1133,8 +1147,8 @@ reste lisible.
 - **Le tableau de bord de l'administrateur ne montrera aucun membre.** Décidé en définissant
   le contenu des écrans : l'administrateur gère la plateforme, pas les tontines. Il verra les gestionnaires
   (avec leur email, pour les joindre), un nombre global de membres et les tontines par statut, mais
-  ni liste de membres, ni montants, ni prêts. Les abonnements (trois formules prévues) viendront
-  ensuite.
+  ni liste de membres, ni montants, ni prêts. Les **abonnements** sont en place : l'ADMIN voit
+  ses clientes (nom, téléphone, email) et leurs formules, et modifie les quotas et les prix.
 - **Limite assumée : une requête par ligne.** Chaque tontine demande son nombre de membres et son
   cycle en cours, chaque prêt ses échéances, chaque cycle clôturé l'existence de son tirage. Pour
   un gestionnaire qui a quelques tontines, c'est invisible ; au-delà, ces blocs seront à réécrire

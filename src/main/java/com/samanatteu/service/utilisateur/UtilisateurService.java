@@ -13,6 +13,7 @@ import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
+import com.samanatteu.exception.utilisateur.EmailObligatoireException;
 import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
@@ -51,8 +52,18 @@ public class UtilisateurService {
         // Le numéro saisi est normalisé en E.164 : "775550000" et "+221775550000" sont
         // le même compte, pas deux.
         String telephone = telephoneService.normaliser(dto.getTelephone());
-        // L'email est optionnel : son unicité n'est vérifiée que s'il est fourni
-        // (sinon existsByEmail(null) bloquerait tous les comptes sans email après le premier).
+        // L'email est OBLIGATOIRE pour les gestionnaires (elles paient : on doit
+        // pouvoir les facturer) et pour les administrateurs. Les membres l'ont
+        // toujours facultatif — d'où un contrôle dépendant du rôle, que Bean
+        // Validation ne peut pas exprimer sur un champ.
+        boolean doitAvoirEmail = dto.getRole() == RoleUtilisateur.ADMIN
+                || dto.getRole() == RoleUtilisateur.GESTIONNAIRE;
+        if (doitAvoirEmail && (dto.getEmail() == null || dto.getEmail().isBlank())) {
+            throw new EmailObligatoireException(dto.getRole().name());
+        }
+        // L'email est optionnel pour les membres : son unicité n'est vérifiée
+        // que s'il est fourni (sinon existsByEmail(null) bloquerait tous les
+        // comptes sans email après le premier).
         if (dto.getEmail() != null && !dto.getEmail().isBlank()
                 && utilisateurRepository.existsByEmail(dto.getEmail())) {
             throw new EmailDejaUtiliseException(dto.getEmail());

@@ -1,10 +1,16 @@
 package com.samanatteu.service.tontine;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import com.samanatteu.entity.abonnement.Formule;
+import com.samanatteu.enums.abonnement.StatutAbonnement;
+import com.samanatteu.entity.abonnement.Abonnement;
+import org.junit.jupiter.api.BeforeEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,6 +47,7 @@ import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.abonnement.AbonnementService;
 
 @ExtendWith(MockitoExtension.class)
 class TontineServiceTest {
@@ -55,9 +62,32 @@ class TontineServiceTest {
     // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
+    // Un faux : la règle d'abonnement est testée dans AbonnementServiceTest.
+    // Ici, on ne teste que la tontine — le faux renvoie une formule MAX
+    // (sans quota) pour ne pas bruiter les tests existants.
+    @Mock
+    private AbonnementService abonnementService;
 
     @InjectMocks
     private TontineService tontineService;
+
+
+    // L'abonnement de la gestionnaire : actif, formule MAX (sans quota), pour que
+    // la règle d'abonnement ne gene pas les tests de la tontine.
+    @BeforeEach
+    void abonnementActif() {
+        Formule formule = new Formule();
+        formule.setNom("MAX");
+        formule.setNbTontinesMax(0);
+        Abonnement abonnement = new Abonnement();
+        abonnement.setFormule(formule);
+        abonnement.setStatut(StatutAbonnement.ACTIF);
+        abonnement.setDateDebut(java.time.LocalDate.now().minusDays(1));
+        abonnement.setDateFin(java.time.LocalDate.now().plusDays(1));
+        // lenient : certains tests de cette classe ne creent pas de tontine
+        // (ils testent l'activation, la suspension...), et n'utilisent donc pas ce stub.
+        lenient().when(abonnementService.exigerAbonnementActif(anyString())).thenReturn(abonnement);
+    }
 
     @AfterEach
     void nettoyer() {

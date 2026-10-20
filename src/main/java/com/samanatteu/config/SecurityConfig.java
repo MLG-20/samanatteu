@@ -70,6 +70,16 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/dashboard/gestionnaire/**").hasRole("GESTIONNAIRE")
                                                 .requestMatchers(HttpMethod.GET, "/dashboard/membre/**").hasRole("MEMBRE")
                                                 .requestMatchers(HttpMethod.GET, "/dashboard/admin/**").hasRole("ADMIN")
+                                                // Les abonnements : l'ADMIN les gère (donnée commerciale
+                                                // de la plateforme), la gestionnaire voit le sien.
+                                                .requestMatchers(HttpMethod.GET, "/abonnement").hasRole("ADMIN")
+                                                .requestMatchers(HttpMethod.POST, "/abonnement").hasRole("ADMIN")
+                                                .requestMatchers(HttpMethod.GET, "/abonnement/mon").hasRole("GESTIONNAIRE")
+                                                // Les formules d'abonnement : l'ADMIN les modifie (quotas,
+                                                // prix) sans redéployer l'application.
+                                                .requestMatchers(HttpMethod.GET, "/formule", "/formule/**").hasRole("ADMIN")
+                                                .requestMatchers(HttpMethod.POST, "/formule").hasRole("ADMIN")
+                                                .requestMatchers(HttpMethod.PUT, "/formule/**").hasRole("ADMIN")
                                                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                                                 .anyRequest().authenticated())

@@ -5,15 +5,21 @@ import java.math.BigDecimal;
 import com.samanatteu.enums.tontine.StatutTontine;
 
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Une ligne « Mes tontines » du tableau de bord gestionnaire. Les chiffres sont
 // calculés (aucune table ne les stocke), d'où un DTO dédié et non TontineDTO.
 @Getter
 @Setter
-@NoArgsConstructor
 public class TontineResumeDTO {
+    // Constructeur sans argument : Jackson en a besoin pour deserialiser
+    // le JSON en DTO. Ecrit a la main, pas genere par Lombok : sur ce JDK,
+    // @NoArgsConstructor produit parfois un constructeur VIDE (sans appel a
+    // super()), et la JVM refuse alors de charger la classe.
+    public TontineResumeDTO() {
+        super();
+    }
+
     private Long id;
 
     private String nom;

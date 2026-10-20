@@ -8,7 +8,6 @@ import com.samanatteu.enums.pret.SensTransaction;
 import com.samanatteu.enums.pret.TypeTransaction;
 
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // membreId, tontineId (Long) au lieu des entités : on n'expose jamais une entité complète imbriquée.
@@ -17,8 +16,15 @@ import lombok.Setter;
 // donc rien à convertir ici.
 @Getter
 @Setter
-@NoArgsConstructor
 public class TransactionDTO {
+    // Constructeur sans argument : Jackson en a besoin pour deserialiser
+    // le JSON en DTO. Ecrit a la main, pas genere par Lombok : sur ce JDK,
+    // @NoArgsConstructor produit parfois un constructeur VIDE (sans appel a
+    // super()), et la JVM refuse alors de charger la classe.
+    public TransactionDTO() {
+        super();
+    }
+
     private Long id;
 
     private Long membreId;
