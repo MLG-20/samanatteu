@@ -15,6 +15,7 @@ import com.samanatteu.exception.auth.RefreshTokenInvalideException;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.JwtUtil;
 import com.samanatteu.security.UtilisateurConnecte;
+import com.samanatteu.service.utilisateur.TelephoneService;
 
 @Service
 public class AuthService {
@@ -22,13 +23,15 @@ public class AuthService {
     private final UtilisateurConnecte utilisateurConnecte;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final TelephoneService telephoneService;
 
     public AuthService(UtilisateurRepository utilisateurRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
-            UtilisateurConnecte utilisateurConnecte) {
+            UtilisateurConnecte utilisateurConnecte, TelephoneService telephoneService) {
         this.utilisateurRepository = utilisateurRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
+        this.telephoneService = telephoneService;
     }
 
     // LoginDTO garantit (@AssertTrue) qu'un email OU un téléphone est fourni.
@@ -40,7 +43,12 @@ public class AuthService {
             utilisateur = utilisateurRepository.findByEmail(loginDTO.getEmail())
                     .orElseThrow(() -> new IdentifiantsInvalidesException());
         } else {
-            utilisateur = utilisateurRepository.findByTelephone(loginDTO.getTelephone())
+            // Le numéro saisi est normalisé en E.164 avant la recherche : le compte
+            // est enregistré en E.164, c'est donc le seul format qui le trouve.
+            // Un numéro mal écrit donne 400 : un format invalide ne révèle rien
+            // sur l'existence d'un compte (seul le 401 le ferait).
+            String telephone = telephoneService.normaliser(loginDTO.getTelephone());
+            utilisateur = utilisateurRepository.findByTelephone(telephone)
                     .orElseThrow(() -> new IdentifiantsInvalidesException());
         }
         boolean motDePasseValide = passwordEncoder.matches(loginDTO.getMotDePasse(), utilisateur.getMotDePasse());

@@ -38,6 +38,7 @@ import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 import com.samanatteu.service.tontine.ParticipationService;
+import com.samanatteu.service.utilisateur.TelephoneService;
 
 @Service
 public class ImportMembreService {
@@ -46,15 +47,17 @@ public class ImportMembreService {
     private final UtilisateurConnecte utilisateurConnecte;
     private final UtilisateurRepository utilisateurRepository;
     private final ParticipationService participationService;
+    private final TelephoneService telephoneService;
 
     public ImportMembreService(ImportMembreRepository importMembreRepository, UtilisateurConnecte utilisateurConnecte,
             TontineRepository tontineRepository, UtilisateurRepository utilisateurRepository,
-            ParticipationService participationService) {
+            ParticipationService participationService, TelephoneService telephoneService) {
         this.importMembreRepository = importMembreRepository;
         this.utilisateurConnecte = utilisateurConnecte;
         this.tontineRepository = tontineRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.participationService = participationService;
+        this.telephoneService = telephoneService;
     }
 
     // Le téléphone vient du token (jamais du client) : chaque gestionnaire
@@ -113,11 +116,6 @@ public class ImportMembreService {
                 continue;
             }
             String erreur = verifierLigne(ligne);
-            // Doublon dans le fichier : add() répond false si le téléphone a déjà été vu.
-            // Placé avant le comptage, pour que le doublon soit compté comme les autres erreurs.
-            if (erreur == null && !telephoneVus.add(ligne[2])) {
-                erreur = "telephone en double dans le fichier";
-            }
             if (erreur != null) {
                 nbErreurs++;
                 detail.append("Ligne ").append(i + 1).append(" : ").append(erreur).append("\n");
@@ -126,9 +124,19 @@ public class ImportMembreService {
                 // tout l'import : SamanatteuException, mère de toutes les exceptions métier,
                 // les rattrape toutes, et la ligne part dans le rapport avec son message.
                 try {
-                    Utilisateur membre = trouverOuCreerMembre(ligne);
-                    participationService.inscrire(tontine, membre, lireParts(ligne));
-                    nbImport++;
+                    // Le numéro est normalisé en E.164 : "771110001" et "+221771110001"
+                    // désignent le même membre, même au sein du même fichier.
+                    String telephone = telephoneService.normaliser(ligne[2]);
+                    // Doublon dans le fichier : add() répond false si le téléphone a déjà été vu.
+                    // Placé avant le comptage, pour que le doublon soit compté comme les autres erreurs.
+                    if (!telephoneVus.add(telephone)) {
+                        nbErreurs++;
+                        detail.append("Ligne ").append(i + 1).append(" : telephone en double dans le fichier\n");
+                    } else {
+                        Utilisateur membre = trouverOuCreerMembre(ligne, telephone);
+                        participationService.inscrire(tontine, membre, lireParts(ligne));
+                        nbImport++;
+                    }
                 } catch (SamanatteuException e) {
                     nbErreurs++;
                     detail.append("Ligne ").append(i + 1).append(" : ").append(e.getMessage()).append("\n");
@@ -221,8 +229,8 @@ public class ImportMembreService {
     // Compte existant réutilisé tel quel ; sinon compte MEMBRE créé sans mot de passe
     // (colonne null) : personne ne peut s'y connecter tant que le membre ne l'a pas choisi.
     // Choix expliqué dans le journal des décisions du README.
-    private Utilisateur trouverOuCreerMembre(String[] ligne) {
-        Optional<Utilisateur> existant = utilisateurRepository.findByTelephone(ligne[2]);
+    private Utilisateur trouverOuCreerMembre(String[] ligne, String telephone) {
+        Optional<Utilisateur> existant = utilisateurRepository.findByTelephone(telephone);
         if (existant.isPresent()) {
             return existant.get();
         }
@@ -230,7 +238,7 @@ public class ImportMembreService {
         Utilisateur utilisateur = new Utilisateur();
         utilisateur.setNom(ligne[0]);
         utilisateur.setPrenom(ligne[1]);
-        utilisateur.setTelephone(ligne[2]);
+        utilisateur.setTelephone(telephone);
         utilisateur.setRole(RoleUtilisateur.MEMBRE);
 
         // Email optionnel. Déjà pris par un autre compte : exception métier, rattrapée par
@@ -248,7 +256,7 @@ public class ImportMembreService {
 
     // Renvoie le motif de refus d'une ligne, ou null si elle est valide.
     // La taille est testée en premier : lire ligne[2] sur une ligne de 2 cases planterait.
-    // Téléphone : 9 chiffres commençant par 7 (mobile sénégalais).
+    // Téléphone : 9 chiffres commençant par 7 (mobile sénégalais), ou déjà en E.164.
     private String verifierLigne(String[] ligne) {
         if (ligne.length < 3) {
             return "colonnes manquantes (nom, prenom, telephone attendus)";
@@ -259,8 +267,11 @@ public class ImportMembreService {
         if (ligne[1].isBlank()) {
             return "prenom manquant";
         }
-        if (!ligne[2].matches("7\\d{8}")) {
-            return "telephone invalide (9 chiffres commençant par 7)";
+        // Un numéro en E.164 est accepté tel quel ; sinon on exige le format local
+        // sénégalais (9 chiffres commençant par 7). La normalisation en E.164 se
+        // fait ensuite, quand le compte est créé ou réutilisé.
+        if (!ligne[2].matches("7\\d{8}") && !ligne[2].matches("\\+[1-9]\\d{7,14}")) {
+            return "telephone invalide (9 chiffres commençant par 7, ou format +221...)";
         }
         if (ligne.length > 4 && !ligne[4].isBlank() && !ligne[4].matches("[1-9]\\d*")) {
             return "nombre de parts invalide (entier à partir de 1)";

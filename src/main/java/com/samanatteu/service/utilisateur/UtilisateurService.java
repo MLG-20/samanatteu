@@ -23,12 +23,14 @@ public class UtilisateurService {
     private final PasswordEncoder passwordEncoder;
     private final UtilisateurRepository utilisateurRepository;
     private final UtilisateurConnecte utilisateurConnecte;
+    private final TelephoneService telephoneService;
 
     public UtilisateurService(UtilisateurRepository utilisateurRepository, PasswordEncoder passwordEncoder,
-            UtilisateurConnecte utilisateurConnecte) {
+            UtilisateurConnecte utilisateurConnecte, TelephoneService telephoneService) {
         this.utilisateurRepository = utilisateurRepository;
         this.passwordEncoder = passwordEncoder;
         this.utilisateurConnecte = utilisateurConnecte;
+        this.telephoneService = telephoneService;
     }
 
     public List<UtilisateurDTO> listUtilisateurs() {
@@ -39,23 +41,29 @@ public class UtilisateurService {
     }
 
     public UtilisateurDTO createUtilisateur(CreationUtilisateurDTO dto) {
+        // Ordre des contrôles : le DROIT d'abord, la faisabilité ensuite (même règle que
+        // ParticipationService). Un anonyme qui demande un ADMIN reçoit 403, même si son
+        // numéro est mal écrit : le 400 viendrait après, et seulement s'il a le droit.
         // Seul un ADMIN peut créer un autre ADMIN (la route d'inscription est publique).
         if (dto.getRole() == RoleUtilisateur.ADMIN && !utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
             throw new AccesRefuseException();
         }
+        // Le numéro saisi est normalisé en E.164 : "775550000" et "+221775550000" sont
+        // le même compte, pas deux.
+        String telephone = telephoneService.normaliser(dto.getTelephone());
         // L'email est optionnel : son unicité n'est vérifiée que s'il est fourni
         // (sinon existsByEmail(null) bloquerait tous les comptes sans email après le premier).
         if (dto.getEmail() != null && !dto.getEmail().isBlank()
                 && utilisateurRepository.existsByEmail(dto.getEmail())) {
             throw new EmailDejaUtiliseException(dto.getEmail());
         }
-        if (utilisateurRepository.existsByTelephone(dto.getTelephone())) {
-            throw new TelephoneDejaUtiliseException(dto.getTelephone());
+        if (utilisateurRepository.existsByTelephone(telephone)) {
+            throw new TelephoneDejaUtiliseException(telephone);
         }
         Utilisateur utilisateur = new Utilisateur();
         utilisateur.setNom(dto.getNom());
         utilisateur.setPrenom(dto.getPrenom());
-        utilisateur.setTelephone(dto.getTelephone());
+        utilisateur.setTelephone(telephone);
         utilisateur.setEmail(dto.getEmail());
         utilisateur.setMotDePasse(passwordEncoder.encode(dto.getMotDePasse()));
         utilisateur.setRole(dto.getRole());

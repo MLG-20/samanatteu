@@ -34,6 +34,7 @@ import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
+import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
@@ -47,6 +48,10 @@ class UtilisateurServiceTest {
     // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
+    // Un vrai service (pas un faux) : le test vérifie ainsi la normalisation
+    // pour de vrai — une saisie "775550000" doit finir "+221775550000" en base.
+    @Spy
+    private TelephoneService telephoneService = new TelephoneService("+221");
 
     @InjectMocks
     private UtilisateurService utilisateurService;
@@ -74,7 +79,7 @@ class UtilisateurServiceTest {
         CreationUtilisateurDTO dto = new CreationUtilisateurDTO();
         dto.setNom("Fall");
         dto.setPrenom("Moussa");
-        dto.setTelephone("775550000");
+        dto.setTelephone("+221775550000");
         dto.setMotDePasse("motdepasse123");
         dto.setRole(role);
         return dto;
@@ -88,6 +93,31 @@ class UtilisateurServiceTest {
         UtilisateurDTO resultat = utilisateurService.createUtilisateur(inscription(RoleUtilisateur.MEMBRE));
 
         assertEquals(RoleUtilisateur.MEMBRE, resultat.getRole());
+    }
+
+    // Règle : le numéro saisi est NORMALISÉ avant d'être enregistré. "775550000"
+    // et "+221775550000" sont le même compte, pas deux.
+    @Test
+    void createUtilisateur_enregistreLeNumeroNormalise() {
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        connecterCommeAnonyme();
+
+        UtilisateurDTO resultat = utilisateurService.createUtilisateur(inscription(RoleUtilisateur.MEMBRE));
+
+        assertEquals("+221775550000", resultat.getTelephone());
+    }
+
+    // Règle : la recherche de doublon se fait sur le numéro NORMALISÉ, sinon
+    // "775550000" et "+221775550000" créeraient deux comptes.
+    @Test
+    void createUtilisateur_refuseUnNumeroDejaUtilise() {
+        when(utilisateurRepository.existsByTelephone("+221775550000")).thenReturn(true);
+        connecterCommeAnonyme();
+
+        assertThrows(TelephoneDejaUtiliseException.class,
+                () -> utilisateurService.createUtilisateur(inscription(RoleUtilisateur.MEMBRE)));
+
+        verify(utilisateurRepository, never()).save(any());
     }
 
     @Test

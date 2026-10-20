@@ -29,6 +29,7 @@ import com.samanatteu.repository.tontine.TontineRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 import com.samanatteu.service.tontine.ParticipationService;
+import com.samanatteu.service.utilisateur.TelephoneService;
 
 @Service
 public class InvitationService {
@@ -40,15 +41,17 @@ public class InvitationService {
     // SecureRandom et pas Random : un token d'invitation donne accès à une
     // tontine, il ne doit pas pouvoir être prédit (même raison que le tirage).
     private final SecureRandom hasard = new SecureRandom();
+    private final TelephoneService telephoneService;
 
     public InvitationService(InvitationRepository invitationRepository, TontineRepository tontineRepository,
             UtilisateurConnecte utilisateurConnect, UtilisateurRepository utilisateurRepository,
-            ParticipationService participationService) {
+            ParticipationService participationService, TelephoneService telephoneService) {
         this.invitationRepository = invitationRepository;
         this.tontineRepository = tontineRepository;
         this.utilisateurConnecte = utilisateurConnect;
         this.utilisateurRepository = utilisateurRepository;
         this.participationService = participationService;
+        this.telephoneService = telephoneService;
     }
 
     // Filtrée par gestionnaire : les tokens sont des clés d'accès, jamais visibles d'un autre.
@@ -111,7 +114,7 @@ public class InvitationService {
         invitation.setType(TypeInvitation.INDIVIDUELLE);
         invitation.setToken(genererToken());
         invitation.setStatut(StatutInvitation.EN_ATTENTE);
-        invitation.setTelephone(demande.getTelephone());
+        invitation.setTelephone(telephoneService.normaliser(demande.getTelephone()));
         invitation.setPrenomPreRempli(demande.getPrenom());
         invitation.setNomPreRempli(demande.getNom());
         // Parts fixées dès l'invitation (gnari lokho possible) ; 1 si non précisé.

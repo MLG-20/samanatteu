@@ -41,6 +41,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.samanatteu.dto.onboarding.ImportMembreDTO;
+import com.samanatteu.service.utilisateur.TelephoneService;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.onboarding.StatutImportMembre;
@@ -77,6 +78,11 @@ class ImportMembreServiceTest {
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
+    // Un vrai service (pas un faux) : le test vérifie ainsi la vraie
+    // normalisation (une saisie "771234566" devient "+221771234566").
+    @Spy
+    private TelephoneService telephoneService = new TelephoneService("+221");
+
     @InjectMocks
     private ImportMembreService importMembreService;
 
@@ -98,7 +104,7 @@ class ImportMembreServiceTest {
     private Tontine tontine6(StatutTontine statut) {
         Utilisateur gestionnaire = new Utilisateur();
         gestionnaire.setId(18L);
-        gestionnaire.setTelephone("770000101");
+        gestionnaire.setTelephone("+221770000101");
         Tontine tontine = new Tontine();
         tontine.setId(6L);
         tontine.setNom("Natt des femmes");
@@ -145,7 +151,7 @@ class ImportMembreServiceTest {
     // Cas courant : la gestionnaire 770000101 importe dans SA tontine 6, encore EN_ATTENTE.
     // Les faux repositories « enregistrent » en renvoyant l'objet reçu.
     private Tontine preparerImportAutorise() {
-        connecter("770000101");
+        connecter("+221770000101");
         Tontine tontine = tontine6(StatutTontine.EN_ATTENTE);
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine));
         when(importMembreRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -156,7 +162,7 @@ class ImportMembreServiceTest {
 
     @Test
     void importer_tontineInconnue_donneTontineIntrouvable() {
-        connecter("770000101");
+        connecter("+221770000101");
         when(tontineRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(TontineIntrouvableException.class,
@@ -167,7 +173,7 @@ class ImportMembreServiceTest {
 
     @Test
     void importer_parUnAutreGestionnaire_estRefuseSansRienCreer() {
-        connecter("770000102");
+        connecter("+221770000102");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
 
         assertThrows(AccesRefuseException.class,
@@ -182,7 +188,7 @@ class ImportMembreServiceTest {
     @ParameterizedTest
     @EnumSource(value = StatutTontine.class, names = "EN_ATTENTE", mode = EnumSource.Mode.EXCLUDE)
     void importer_inscriptionsFermees_estRefuseSansCreerDeCompte(StatutTontine statut) {
-        connecter("770000101");
+        connecter("+221770000101");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(statut)));
 
         assertThrows(InscriptionsFermeesException.class,
@@ -200,7 +206,7 @@ class ImportMembreServiceTest {
     @ValueSource(strings = { "", "nom,prenom,telephone,email,parts\n",
             "nom,prenom,telephone,email,parts\n\n\n" })
     void importer_fichierSansMembre_donneFichierVide(String contenu) {
-        connecter("770000101");
+        connecter("+221770000101");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
 
         assertThrows(FichierVideException.class, () -> importMembreService.importer(6L, csv(contenu)));
@@ -211,7 +217,7 @@ class ImportMembreServiceTest {
     // Guillemet ouvert jamais refermé : OpenCSV échoue, l'erreur technique devient un 400.
     @Test
     void importer_csvMalForme_donneFichierIllisible() {
-        connecter("770000101");
+        connecter("+221770000101");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
 
         assertThrows(FichierIllisibleException.class,
@@ -243,7 +249,7 @@ class ImportMembreServiceTest {
         assertEquals("membres.csv", rapport.getFichierNom());
         assertEquals(6L, rapport.getTontineId());
         // Numéro de ligne tel qu'on le voit dans un tableur (l'en-tête est la ligne 1).
-        assertEquals("Ligne 5 : telephone invalide (9 chiffres commençant par 7)\n"
+        assertEquals("Ligne 5 : telephone invalide (9 chiffres commençant par 7, ou format +221...)\n"
                 + "Ligne 6 : nom manquant\n"
                 + "Ligne 7 : telephone en double dans le fichier\n", rapport.getErreursDetail());
 
@@ -252,7 +258,7 @@ class ImportMembreServiceTest {
         ArgumentCaptor<Integer> parts = ArgumentCaptor.forClass(Integer.class);
         verify(participationService, times(3)).inscrire(eq(tontine), membres.capture(), parts.capture());
         assertEquals(List.of(2, 1, 1), parts.getAllValues());
-        assertEquals(List.of("771110001", "771110002", "771110003"),
+        assertEquals(List.of("+221771110001", "+221771110002", "+221771110003"),
                 membres.getAllValues().stream().map(Utilisateur::getTelephone).toList());
     }
 
@@ -269,7 +275,7 @@ class ImportMembreServiceTest {
         verify(utilisateurRepository).save(cree.capture());
         assertEquals("Diop", cree.getValue().getNom());
         assertEquals("Awa", cree.getValue().getPrenom());
-        assertEquals("771110001", cree.getValue().getTelephone());
+        assertEquals("+221771110001", cree.getValue().getTelephone());
         assertEquals("awa.diop@example.com", cree.getValue().getEmail());
         assertEquals(RoleUtilisateur.MEMBRE, cree.getValue().getRole());
         assertNull(cree.getValue().getMotDePasse());
@@ -283,8 +289,8 @@ class ImportMembreServiceTest {
         existant.setId(30L);
         existant.setNom("Diop");
         existant.setPrenom("Awa");
-        existant.setTelephone("771110001");
-        when(utilisateurRepository.findByTelephone("771110001")).thenReturn(Optional.of(existant));
+        existant.setTelephone("+221771110001");
+        when(utilisateurRepository.findByTelephone("+221771110001")).thenReturn(Optional.of(existant));
 
         ImportMembreDTO rapport = importMembreService.importer(6L,
                 csv(EN_TETE + "AutreNom,AutrePrenom,771110001,autre@example.com,3\n"));
@@ -305,12 +311,12 @@ class ImportMembreServiceTest {
         Tontine tontine = preparerImportAutorise();
         Utilisateur dejaInscrite = new Utilisateur();
         dejaInscrite.setId(30L);
-        dejaInscrite.setTelephone("771110001");
+        dejaInscrite.setTelephone("+221771110001");
         Utilisateur nouvelle = new Utilisateur();
         nouvelle.setId(31L);
-        nouvelle.setTelephone("771110002");
-        when(utilisateurRepository.findByTelephone("771110001")).thenReturn(Optional.of(dejaInscrite));
-        when(utilisateurRepository.findByTelephone("771110002")).thenReturn(Optional.of(nouvelle));
+        nouvelle.setTelephone("+221771110002");
+        when(utilisateurRepository.findByTelephone("+221771110001")).thenReturn(Optional.of(dejaInscrite));
+        when(utilisateurRepository.findByTelephone("+221771110002")).thenReturn(Optional.of(nouvelle));
         when(participationService.inscrire(tontine, dejaInscrite, 1))
                 .thenThrow(new ParticipationDejaExistanteException());
 
@@ -374,8 +380,8 @@ class ImportMembreServiceTest {
         assertEquals("Ligne 2 : colonnes manquantes (nom, prenom, telephone attendus)\n"
                 + "Ligne 3 : nom manquant\n"
                 + "Ligne 4 : prenom manquant\n"
-                + "Ligne 5 : telephone invalide (9 chiffres commençant par 7)\n"
-                + "Ligne 6 : telephone invalide (9 chiffres commençant par 7)\n"
+                + "Ligne 5 : telephone invalide (9 chiffres commençant par 7, ou format +221...)\n"
+                + "Ligne 6 : telephone invalide (9 chiffres commençant par 7, ou format +221...)\n"
                 + "Ligne 7 : email invalide\n"
                 + "Ligne 8 : nombre de parts invalide (entier à partir de 1)\n"
                 + "Ligne 9 : nombre de parts invalide (entier à partir de 1)\n", rapport.getErreursDetail());
@@ -412,7 +418,7 @@ class ImportMembreServiceTest {
         assertEquals(2, rapport.getNbMembresTotal());
         assertEquals(1, rapport.getNbImportes());
         assertEquals(1, rapport.getNbErreurs());
-        assertEquals("Ligne 4 : telephone invalide (9 chiffres commençant par 7)\n", rapport.getErreursDetail());
+        assertEquals("Ligne 4 : telephone invalide (9 chiffres commençant par 7, ou format +221...)\n", rapport.getErreursDetail());
     }
 
     // ---------------------------------------------------------------------- Excel
@@ -439,7 +445,7 @@ class ImportMembreServiceTest {
         ArgumentCaptor<Integer> parts = ArgumentCaptor.forClass(Integer.class);
         verify(participationService, times(2)).inscrire(eq(tontine), membres.capture(), parts.capture());
         assertEquals(List.of(2, 1), parts.getAllValues());
-        assertEquals(List.of("771110001", "771110002"),
+        assertEquals(List.of("+221771110001", "+221771110002"),
                 membres.getAllValues().stream().map(Utilisateur::getTelephone).toList());
     }
 
@@ -461,13 +467,13 @@ class ImportMembreServiceTest {
         assertEquals(2, rapport.getNbMembresTotal());
         assertEquals(1, rapport.getNbImportes());
         assertEquals(1, rapport.getNbErreurs());
-        assertEquals("Ligne 5 : telephone invalide (9 chiffres commençant par 7)\n", rapport.getErreursDetail());
+        assertEquals("Ligne 5 : telephone invalide (9 chiffres commençant par 7, ou format +221...)\n", rapport.getErreursDetail());
     }
 
     // En-tête suivi seulement de lignes vides : même refus qu'un fichier vide.
     @Test
     void importer_excelSansMembre_donneFichierVide() {
-        connecter("770000101");
+        connecter("+221770000101");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
 
         assertThrows(FichierVideException.class, () -> importMembreService.importer(6L,
@@ -480,7 +486,7 @@ class ImportMembreServiceTest {
     // doit devenir un 400 lisible et non un 500.
     @Test
     void importer_fauxExcel_donneFichierIllisible() {
-        connecter("770000101");
+        connecter("+221770000101");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
         MockMultipartFile faux = new MockMultipartFile("fichier", "faux.xlsx", "text/csv",
                 (EN_TETE + "Diop,Awa,771110001,,1\n").getBytes(StandardCharsets.UTF_8));
@@ -497,13 +503,13 @@ class ImportMembreServiceTest {
     // téléphone du token, jamais findAll.
     @Test
     void listImportMembre_filtreParLeTelephoneDuToken() {
-        connecter("770000101");
-        when(importMembreRepository.findByTontineGestionnaireTelephoneOrderByCreatedAtDesc("770000101"))
+        connecter("+221770000101");
+        when(importMembreRepository.findByTontineGestionnaireTelephoneOrderByCreatedAtDesc("+221770000101"))
                 .thenReturn(List.of());
 
         importMembreService.listImportMembre();
 
-        verify(importMembreRepository).findByTontineGestionnaireTelephoneOrderByCreatedAtDesc("770000101");
+        verify(importMembreRepository).findByTontineGestionnaireTelephoneOrderByCreatedAtDesc("+221770000101");
         verify(importMembreRepository, never()).findAll();
     }
 }

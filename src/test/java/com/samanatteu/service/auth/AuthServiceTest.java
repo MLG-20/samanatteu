@@ -31,6 +31,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.samanatteu.dto.auth.ChangementMotDePasseDTO;
 import com.samanatteu.dto.auth.RefreshRequestDTO;
 import com.samanatteu.dto.auth.TokenDTO;
+import com.samanatteu.service.utilisateur.TelephoneService;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
@@ -55,6 +56,11 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
+
+    // Un vrai service (pas un faux) : le test vérifie ainsi la vraie
+    // normalisation (une saisie "771234566" devient "+221771234566").
+    @Spy
+    private TelephoneService telephoneService = new TelephoneService("+221");
 
     @InjectMocks
     private AuthService authService;
@@ -93,7 +99,7 @@ class AuthServiceTest {
     private Utilisateur compte(String motDePasseEnClair) {
         Utilisateur utilisateur = new Utilisateur();
         utilisateur.setId(30L);
-        utilisateur.setTelephone("771234566");
+        utilisateur.setTelephone("+221771234566");
         utilisateur.setRole(RoleUtilisateur.MEMBRE);
         utilisateur.setMotDePasse(motDePasseEnClair == null ? null : passwordEncoder.encode(motDePasseEnClair));
         return utilisateur;
@@ -112,9 +118,9 @@ class AuthServiceTest {
     // haché (jamais en clair) et c'est bien lui qui ouvre le compte ensuite.
     @Test
     void changerMotDePasse_ancienCorrect_enregistreLeNouveauHache() {
-        connecter("771234566");
+        connecter("+221771234566");
         Utilisateur utilisateur = compte("motdepasse123");
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
 
         authService.changerMotDePasse(demande("motdepasse123", "nouveaupasse456"));
 
@@ -129,10 +135,10 @@ class AuthServiceTest {
     // Sans la preuve de l'ancien mot de passe, rien ne change et rien n'est enregistré.
     @Test
     void changerMotDePasse_ancienIncorrect_estRefuseSansRienChanger() {
-        connecter("771234566");
+        connecter("+221771234566");
         Utilisateur utilisateur = compte("motdepasse123");
         String hacheAvant = utilisateur.getMotDePasse();
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
 
         assertThrows(AncienMotDePasseIncorrectException.class,
                 () -> authService.changerMotDePasse(demande("pas-le-bon", "nouveaupasse456")));
@@ -146,8 +152,8 @@ class AuthServiceTest {
     // « changer » (aucun ancien n'est le bon) : il passera par « mot de passe oublié ».
     @Test
     void changerMotDePasse_compteSansMotDePasse_estRefuse() {
-        connecter("771234566");
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(compte(null)));
+        connecter("+221771234566");
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(compte(null)));
 
         assertThrows(AncienMotDePasseIncorrectException.class,
                 () -> authService.changerMotDePasse(demande("nimportequoi", "nouveaupasse456")));
@@ -158,8 +164,8 @@ class AuthServiceTest {
     // Token encore valide mais compte supprimé entre-temps.
     @Test
     void changerMotDePasse_compteDisparu_estRefuse() {
-        connecter("771234566");
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.empty());
+        connecter("+221771234566");
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.empty());
 
         assertThrows(AccesRefuseException.class,
                 () -> authService.changerMotDePasse(demande("motdepasse123", "nouveaupasse456")));
@@ -173,7 +179,7 @@ class AuthServiceTest {
     void refresh_tokenALaVersionDuCompte_donneUneNouvellePaire() {
         Utilisateur utilisateur = compte("motdepasse123");
         String refreshToken = jwtUtil.generateRefreshToken(utilisateur);
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
 
         TokenDTO paire = authService.refresh(demandeRefresh(refreshToken));
 
@@ -186,10 +192,10 @@ class AuthServiceTest {
     // le token fabriqué avant ne lui correspond plus.
     @Test
     void deconnecter_perimeLesRefreshTokensDejaFabriques() {
-        connecter("771234566");
+        connecter("+221771234566");
         Utilisateur utilisateur = compte("motdepasse123");
         String refreshToken = jwtUtil.generateRefreshToken(utilisateur);
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
 
         authService.deconnecter();
 
@@ -202,9 +208,9 @@ class AuthServiceTest {
     // Un token fabriqué APRÈS la déconnexion porte le nouveau numéro : il est accepté.
     @Test
     void refresh_tokenFabriqueApresLaDeconnexion_estAccepte() {
-        connecter("771234566");
+        connecter("+221771234566");
         Utilisateur utilisateur = compte("motdepasse123");
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
         authService.deconnecter();
 
         String nouveau = jwtUtil.generateRefreshToken(utilisateur);
@@ -219,7 +225,7 @@ class AuthServiceTest {
         Utilisateur utilisateur = compte("motdepasse123");
         String refreshToken = jwtUtil.generateRefreshToken(utilisateur);
         doReturn(null).when(jwtUtil).extractVersion(refreshToken);
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
 
         assertThrows(RefreshTokenInvalideException.class,
                 () -> authService.refresh(demandeRefresh(refreshToken)));

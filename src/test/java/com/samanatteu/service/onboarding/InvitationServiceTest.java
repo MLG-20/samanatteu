@@ -31,6 +31,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import com.samanatteu.dto.onboarding.DemandeInvitationDTO;
 import com.samanatteu.dto.onboarding.InvitationDTO;
 import com.samanatteu.dto.onboarding.LienInvitationDTO;
+import com.samanatteu.service.utilisateur.TelephoneService;
 import com.samanatteu.entity.onboarding.Invitation;
 import com.samanatteu.entity.tontine.Tontine;
 import com.samanatteu.entity.utilisateur.Utilisateur;
@@ -71,6 +72,11 @@ class InvitationServiceTest {
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
 
+    // Un vrai service (pas un faux) : le test vérifie ainsi la vraie
+    // normalisation (une saisie "771234566" devient "+221771234566").
+    @Spy
+    private TelephoneService telephoneService = new TelephoneService("+221");
+
     @InjectMocks
     private InvitationService invitationService;
 
@@ -90,7 +96,7 @@ class InvitationServiceTest {
     private Tontine tontine6(StatutTontine statut) {
         Utilisateur gestionnaire = new Utilisateur();
         gestionnaire.setId(18L);
-        gestionnaire.setTelephone("770000101");
+        gestionnaire.setTelephone("+221770000101");
         Tontine tontine = new Tontine();
         tontine.setId(6L);
         tontine.setNom("Natt des femmes");
@@ -102,7 +108,7 @@ class InvitationServiceTest {
     private Utilisateur membre30() {
         Utilisateur membre = new Utilisateur();
         membre.setId(30L);
-        membre.setTelephone("771234566");
+        membre.setTelephone("+221771234566");
         return membre;
     }
 
@@ -126,7 +132,7 @@ class InvitationServiceTest {
 
     private DemandeInvitationDTO demande(Integer parts) {
         DemandeInvitationDTO demande = new DemandeInvitationDTO();
-        demande.setTelephone("771234566");
+        demande.setTelephone("+221771234566");
         demande.setPrenom("Awa");
         demande.setNom("Diop");
         demande.setNombreParts(parts);
@@ -137,7 +143,7 @@ class InvitationServiceTest {
 
     @Test
     void lienDeGroupe_tontineInexistante_donne404() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.empty());
 
         assertThrows(TontineIntrouvableException.class, () -> invitationService.genererLienGroupe(6L));
@@ -145,7 +151,7 @@ class InvitationServiceTest {
 
     @Test
     void lienDeGroupe_parUnAutreGestionnaire_estRefuseSansRienEcrire() {
-        connecter("770000102", "ROLE_GESTIONNAIRE");
+        connecter("+221770000102", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
 
         assertThrows(AccesRefuseException.class, () -> invitationService.genererLienGroupe(6L));
@@ -155,7 +161,7 @@ class InvitationServiceTest {
     @ParameterizedTest
     @EnumSource(value = StatutTontine.class, names = { "ACTIVE", "SUSPENDUE", "TERMINEE" })
     void lienDeGroupe_tontineDemarree_inscriptionsFermees(StatutTontine statut) {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(statut)));
 
         assertThrows(InscriptionsFermeesException.class, () -> invitationService.genererLienGroupe(6L));
@@ -164,7 +170,7 @@ class InvitationServiceTest {
 
     @Test
     void lienDeGroupe_creeUnLienFixeParLeServeur() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
         when(invitationRepository.findByTontineIdAndTypeAndStatut(6L, TypeInvitation.GROUPE,
                 StatutInvitation.EN_ATTENTE)).thenReturn(List.of());
@@ -185,7 +191,7 @@ class InvitationServiceTest {
     // Option A : un seul lien de groupe actif, l'ancien passe en ANNULEE (pas supprimé).
     @Test
     void lienDeGroupe_annuleLAncienLien() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
         Invitation ancien = invitation(TypeInvitation.GROUPE);
         when(invitationRepository.findByTontineIdAndTypeAndStatut(6L, TypeInvitation.GROUPE,
@@ -202,7 +208,7 @@ class InvitationServiceTest {
 
     @Test
     void deuxLiens_ontDesTokensDifferents() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
         saveRenvoieLObjet();
 
@@ -216,7 +222,7 @@ class InvitationServiceTest {
 
     @Test
     void invitationIndividuelle_parUnAutreGestionnaire_estRefusee() {
-        connecter("770000102", "ROLE_GESTIONNAIRE");
+        connecter("+221770000102", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
 
         assertThrows(AccesRefuseException.class,
@@ -226,7 +232,7 @@ class InvitationServiceTest {
 
     @Test
     void invitationIndividuelle_tontineActive_inscriptionsFermees() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.ACTIVE)));
 
         assertThrows(InscriptionsFermeesException.class,
@@ -235,7 +241,7 @@ class InvitationServiceTest {
 
     @Test
     void invitationIndividuelle_preRemplieAvecSesParts() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
         saveRenvoieLObjet();
 
@@ -243,7 +249,7 @@ class InvitationServiceTest {
 
         assertEquals(TypeInvitation.INDIVIDUELLE, dto.getType());
         assertEquals(StatutInvitation.EN_ATTENTE, dto.getStatut());
-        assertEquals("771234566", dto.getTelephone());
+        assertEquals("+221771234566", dto.getTelephone());
         assertEquals("Awa", dto.getPrenomPreRempli());
         assertEquals("Diop", dto.getNomPreRempli());
         assertEquals(2, dto.getNombreParts());
@@ -253,7 +259,7 @@ class InvitationServiceTest {
 
     @Test
     void invitationIndividuelle_sansParts_uneParDefaut() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
         when(tontineRepository.findById(6L)).thenReturn(Optional.of(tontine6(StatutTontine.EN_ATTENTE)));
         saveRenvoieLObjet();
 
@@ -310,7 +316,7 @@ class InvitationServiceTest {
     void consulter_lienValide_renvoieLeNomDeLaTontineEtLePreRemplissage() {
         Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
         invitation.setPrenomPreRempli("Awa");
-        invitation.setTelephone("771234566");
+        invitation.setTelephone("+221771234566");
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
 
         LienInvitationDTO dto = invitationService.consulterLien("jeton");
@@ -318,18 +324,18 @@ class InvitationServiceTest {
         assertEquals("Natt des femmes", dto.getNomTontine());
         assertEquals(TypeInvitation.INDIVIDUELLE, dto.getType());
         assertEquals("Awa", dto.getPrenomPreRempli());
-        assertEquals("771234566", dto.getTelephone());
+        assertEquals("+221771234566", dto.getTelephone());
     }
 
     // ------------------------------------------------------------ rejoindre
 
     @Test
     void rejoindre_lienDeGroupe_inscritLeMembreAvecUnePartEtLaisseLeLienValide() {
-        connecter("771234566", "ROLE_MEMBRE");
+        connecter("+221771234566", "ROLE_MEMBRE");
         Invitation lien = invitation(TypeInvitation.GROUPE);
         Utilisateur membre = membre30();
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(lien));
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(membre));
 
         invitationService.rejoindre("jeton");
 
@@ -342,13 +348,13 @@ class InvitationServiceTest {
 
     @Test
     void rejoindre_invitationIndividuelle_reprendSesPartsEtPasseEnAccepte() {
-        connecter("771234566", "ROLE_MEMBRE");
+        connecter("+221771234566", "ROLE_MEMBRE");
         Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
-        invitation.setTelephone("771234566");
+        invitation.setTelephone("+221771234566");
         invitation.setNombreParts(2);
         Utilisateur membre = membre30();
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(membre));
 
         invitationService.rejoindre("jeton");
 
@@ -360,14 +366,14 @@ class InvitationServiceTest {
     // Lien individuel transféré à quelqu'un d'autre : refusé.
     @Test
     void rejoindre_invitationIndividuelle_parUnAutreTelephone_estRefuse() {
-        connecter("779999999", "ROLE_MEMBRE");
+        connecter("+221779999999", "ROLE_MEMBRE");
         Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
-        invitation.setTelephone("771234566");
+        invitation.setTelephone("+221771234566");
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
         Utilisateur intrus = new Utilisateur();
         intrus.setId(31L);
-        intrus.setTelephone("779999999");
-        when(utilisateurRepository.findByTelephone("779999999")).thenReturn(Optional.of(intrus));
+        intrus.setTelephone("+221779999999");
+        when(utilisateurRepository.findByTelephone("+221779999999")).thenReturn(Optional.of(intrus));
 
         assertThrows(AccesRefuseException.class, () -> invitationService.rejoindre("jeton"));
         verifyNoInteractions(participationService);
@@ -378,11 +384,11 @@ class InvitationServiceTest {
     // et l'invitation à usage unique n'est PAS consommée.
     @Test
     void rejoindre_inscriptionRefusee_donne409SansConsommerLInvitation() {
-        connecter("771234566", "ROLE_MEMBRE");
+        connecter("+221771234566", "ROLE_MEMBRE");
         Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
-        invitation.setTelephone("771234566");
+        invitation.setTelephone("+221771234566");
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(membre30()));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(membre30()));
         when(participationService.inscrire(any(), any(), any()))
                 .thenThrow(new ParticipationDejaExistanteException());
 
@@ -394,7 +400,7 @@ class InvitationServiceTest {
     // Les contrôles du lien s'appliquent aussi à rejoindre (pas seulement à la consultation).
     @Test
     void rejoindre_invitationDejaUtilisee_estRefuseeSansParticipation() {
-        connecter("771234566", "ROLE_MEMBRE");
+        connecter("+221771234566", "ROLE_MEMBRE");
         Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
         invitation.setStatut(StatutInvitation.ACCEPTE);
         when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
@@ -407,8 +413,8 @@ class InvitationServiceTest {
 
     @Test
     void liste_neRenvoieQueLesInvitationsDuGestionnaireConnecte() {
-        connecter("770000101", "ROLE_GESTIONNAIRE");
-        when(invitationRepository.findByTontineGestionnaireTelephoneOrderByCreatedAtDesc("770000101"))
+        connecter("+221770000101", "ROLE_GESTIONNAIRE");
+        when(invitationRepository.findByTontineGestionnaireTelephoneOrderByCreatedAtDesc("+221770000101"))
                 .thenReturn(List.of(invitation(TypeInvitation.GROUPE)));
 
         assertEquals(1, invitationService.listInvitation().size());

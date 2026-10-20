@@ -32,6 +32,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.samanatteu.dto.auth.MotDePasseOublieDTO;
 import com.samanatteu.dto.auth.ReinitialisationMotDePasseDTO;
+import com.samanatteu.service.utilisateur.TelephoneService;
 import com.samanatteu.entity.auth.CodeReinitialisation;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.exception.auth.CodeInvalideException;
@@ -55,6 +56,11 @@ class MotDePasseOublieServiceTest {
     @Spy
     private PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
+    // Un vrai service (pas un faux) : le test vérifie ainsi la vraie
+    // normalisation (une saisie "771234566" devient "+221771234566").
+    @Spy
+    private TelephoneService telephoneService = new TelephoneService("+221");
+
     @InjectMocks
     private MotDePasseOublieService motDePasseOublieService;
 
@@ -64,7 +70,7 @@ class MotDePasseOublieServiceTest {
     private Utilisateur compte30() {
         Utilisateur utilisateur = new Utilisateur();
         utilisateur.setId(30L);
-        utilisateur.setTelephone("771234566");
+        utilisateur.setTelephone("+221771234566");
         return utilisateur;
     }
 
@@ -95,7 +101,7 @@ class MotDePasseOublieServiceTest {
 
     // Le compte 30 existe et son dernier code est celui fourni.
     private void preparer(Utilisateur utilisateur, CodeReinitialisation code) {
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
         when(codeReinitialisationRepository.findFirstByUtilisateurIdOrderByCreatedAtDesc(30L))
                 .thenReturn(Optional.of(code));
     }
@@ -106,7 +112,7 @@ class MotDePasseOublieServiceTest {
     // mais rien n'est créé ni envoyé.
     @Test
     void demanderCode_numeroInconnu_neFaitRienSansErreur() {
-        when(utilisateurRepository.findByTelephone("779999999")).thenReturn(Optional.empty());
+        when(utilisateurRepository.findByTelephone("+221779999999")).thenReturn(Optional.empty());
 
         motDePasseOublieService.demanderCode(demande("779999999"));
 
@@ -118,12 +124,12 @@ class MotDePasseOublieServiceTest {
     @Test
     void demanderCode_numeroConnu_envoieLeCodeEtNEnregistreQueSonHachage() {
         Utilisateur utilisateur = compte30();
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
 
         motDePasseOublieService.demanderCode(demande("771234566"));
 
         ArgumentCaptor<String> sms = ArgumentCaptor.forClass(String.class);
-        verify(envoyeurSms).envoyer(eq("771234566"), sms.capture());
+        verify(envoyeurSms).envoyer(eq("+221771234566"), sms.capture());
         Matcher chiffres = Pattern.compile("votre code est (\\d{6})\\.").matcher(sms.getValue());
         assertTrue(chiffres.find(), "le SMS doit contenir un code à 6 chiffres : " + sms.getValue());
         String codeEnvoye = chiffres.group(1);
@@ -218,7 +224,7 @@ class MotDePasseOublieServiceTest {
     // numéro n'a pas de compte.
     @Test
     void reinitialiser_numeroInconnu_donneLeMemeRefus() {
-        when(utilisateurRepository.findByTelephone("779999999")).thenReturn(Optional.empty());
+        when(utilisateurRepository.findByTelephone("+221779999999")).thenReturn(Optional.empty());
 
         CodeInvalideException refus = assertThrows(CodeInvalideException.class,
                 () -> motDePasseOublieService.reinitialiser(reinitialisation("779999999", "123456")));
@@ -231,7 +237,7 @@ class MotDePasseOublieServiceTest {
     @Test
     void reinitialiser_aucunCodeDemande_estRefuse() {
         Utilisateur utilisateur = compte30();
-        when(utilisateurRepository.findByTelephone("771234566")).thenReturn(Optional.of(utilisateur));
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
         when(codeReinitialisationRepository.findFirstByUtilisateurIdOrderByCreatedAtDesc(30L))
                 .thenReturn(Optional.empty());
 

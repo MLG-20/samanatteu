@@ -12,9 +12,11 @@ import com.samanatteu.dto.auth.ReinitialisationMotDePasseDTO;
 import com.samanatteu.entity.auth.CodeReinitialisation;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.exception.auth.CodeInvalideException;
+import com.samanatteu.exception.utilisateur.TelephoneInvalideException;
 import com.samanatteu.repository.auth.CodeReinitialisationRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.service.notification.EnvoyeurSms;
+import com.samanatteu.service.utilisateur.TelephoneService;
 
 @Service
 public class MotDePasseOublieService {
@@ -22,22 +24,31 @@ public class MotDePasseOublieService {
     private final CodeReinitialisationRepository codeReinitialisationRepository;
     private final PasswordEncoder passwordEncoder;
     private final EnvoyeurSms envoyeurSms;
+    private final TelephoneService telephoneService;
     private final SecureRandom hasard = new SecureRandom();
     private static final int TENTATIVES_MAX = 5;
 
     public MotDePasseOublieService(UtilisateurRepository utilisateurRepository,
             CodeReinitialisationRepository codeReinitialisationRepository, PasswordEncoder passwordEncoder,
-            EnvoyeurSms envoyeurSms) {
+            EnvoyeurSms envoyeurSms, TelephoneService telephoneService) {
         this.utilisateurRepository = utilisateurRepository;
         this.codeReinitialisationRepository = codeReinitialisationRepository;
         this.passwordEncoder = passwordEncoder;
         this.envoyeurSms = envoyeurSms;
+        this.telephoneService = telephoneService;
     }
 
     public void demanderCode(MotDePasseOublieDTO dto) {
-        Optional<Utilisateur> existant = utilisateurRepository.findByTelephone(dto.getTelephone());
         // Numéro inconnu : arrêt en silence, sans erreur. Répondre « inconnu »
         // permettrait de découvrir quels numéros ont un compte.
+        // Un numéro MAL FORMÉ est traité comme un numéro inconnu : cette route
+        // répond toujours 204, elle ne révèle rien (pas même un format invalide).
+        Optional<Utilisateur> existant;
+        try {
+            existant = utilisateurRepository.findByTelephone(telephoneService.normaliser(dto.getTelephone()));
+        } catch (TelephoneInvalideException e) {
+            return;
+        }
         if (existant.isEmpty()) {
             return;
         }
@@ -64,8 +75,15 @@ public class MotDePasseOublieService {
 
     // Tous les refus lancent la même exception : la réponse ne dit jamais lequel.
     public void reinitialiser(ReinitialisationMotDePasseDTO dto) {
-        Utilisateur utilisateur = utilisateurRepository.findByTelephone(dto.getTelephone())
-                .orElseThrow(() -> new CodeInvalideException());
+        // Un numéro mal formé est traité comme un code faux : même exception,
+        // même réponse. Rien ne distingue « numéro invalide » de « code erroné ».
+        Utilisateur utilisateur;
+        try {
+            utilisateur = utilisateurRepository.findByTelephone(telephoneService.normaliser(dto.getTelephone()))
+                    .orElseThrow(() -> new CodeInvalideException());
+        } catch (TelephoneInvalideException e) {
+            throw new CodeInvalideException();
+        }
         // Seul le dernier code demandé compte (celui du SMS le plus récent).
         CodeReinitialisation codeReinitialisation = codeReinitialisationRepository
                 .findFirstByUtilisateurIdOrderByCreatedAtDesc(utilisateur.getId())
