@@ -4,6 +4,8 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +29,7 @@ public class MotDePasseOublieService {
     private final TelephoneService telephoneService;
     private final SecureRandom hasard = new SecureRandom();
     private static final int TENTATIVES_MAX = 5;
+    private static final Logger logger = LoggerFactory.getLogger(MotDePasseOublieService.class);
 
     public MotDePasseOublieService(UtilisateurRepository utilisateurRepository,
             CodeReinitialisationRepository codeReinitialisationRepository, PasswordEncoder passwordEncoder,
@@ -67,9 +70,17 @@ public class MotDePasseOublieService {
 
         // EnvoyeurSms et non NotificationService : celui-ci enregistre chaque message
         // dans la table notification, le code y serait lisible en clair.
-        envoyeurSms.envoyer(utilisateur.getTelephone(),
-                "SamaNatteu : votre code est " + code
-                        + ". Il est valable 10 minutes. Ne le communiquez à personne.");
+        // Un envoi raté (SMS non crédité, réseau, quota épuisé…) ne doit PAS
+        // faire échouer la demande : cette route répond toujours 204. Le code
+        // reste en base, il sera renvoyé à la prochaine demande.
+        try {
+            envoyeurSms.envoyer(utilisateur.getTelephone(),
+                    "SamaNatteu : votre code est " + code
+                            + ". Il est valable 10 minutes. Ne le communiquez à personne.");
+        } catch (RuntimeException e) {
+            logger.warn("Echec de l'envoi du code de reinitialisation a l'utilisateur {} : {}",
+                    utilisateur.getId(), e.getMessage());
+        }
 
     }
 

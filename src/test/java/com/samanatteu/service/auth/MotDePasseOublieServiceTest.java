@@ -1,6 +1,9 @@
 package com.samanatteu.service.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -117,6 +120,22 @@ class MotDePasseOublieServiceTest {
         motDePasseOublieService.demanderCode(demande("779999999"));
 
         verifyNoInteractions(codeReinitialisationRepository, envoyeurSms);
+    }
+
+    // Un envoi raté (SMS non crédité, réseau…) ne doit PAS faire échouer la
+    // demande : la route répond toujours 204, elle ne révèle rien. Le code
+    // reste enregistré, il sera renvoyé à la prochaine demande.
+    @Test
+    void demanderCode_envoiRate_neFaitPasEchouerLaDemande() {
+        Utilisateur utilisateur = compte30();
+        when(utilisateurRepository.findByTelephone("+221771234566")).thenReturn(Optional.of(utilisateur));
+        doThrow(new RuntimeException("Twilio : numéro non crédité")).when(envoyeurSms)
+                .envoyer(anyString(), anyString());
+
+        assertDoesNotThrow(() -> motDePasseOublieService.demanderCode(demande("771234566")));
+
+        // Le code a bien été enregistré : seule l'envoi a échoué.
+        verify(codeReinitialisationRepository).save(any());
     }
 
     // Le code part en clair dans le SMS (6 chiffres) mais n'est enregistré que haché,
