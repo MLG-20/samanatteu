@@ -38,6 +38,19 @@ samanatteu:
   # appelants passent par IndicatifPays. Quand la plateforme servira plusieurs
   # pays, seule cette valeur changera de source (le pays du tenant).
   pays-defaut: "+221"
+  # Envoi réel des SMS par Twilio (CDC §4.10). Si enabled=false ou absent,
+  # EnvoyeurSmsConsole prend le relais : les SMS finissent dans les logs et
+  # l'application démarre sans compte Twilio.
+  # Le défaut est false (dépôt utilisable par tout le monde) ; on l'active
+  # localement en mettant TWILIO_ENABLED=true dans le .env.
+  sms:
+    twilio:
+      enabled: ${TWILIO_ENABLED:false}
+      # Les identifiants viennent du .env (jamais dans le dépôt).
+      account-sid: ${TWILIO_ACCOUNT_SID:}
+      auth-token: ${TWILIO_AUTH_TOKEN:}
+      # Le numéro qui envoie les SMS, au format E.164.
+      from: ${TWILIO_FROM:}
 
 jwt:
   secret: ${JWT_SECRET}

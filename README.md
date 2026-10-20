@@ -555,13 +555,15 @@ Choix notables :
   « a-t-il tel rôle ? » à `UtilisateurConnecte` (`telephone()`, `aLeRole(RoleUtilisateur)`), seul
   endroit, avec `JwtAuthFilter`, à toucher au `SecurityContextHolder`.
 - **Les services dépendent d'interfaces, pas de fournisseurs.** `NotificationService` reçoit un
-  `EnvoyeurSms` et un `EnvoyeurEmail` (interfaces). `EnvoyeurSmsConsole` écrit dans la console
-  (pas encore de fournisseur SMS) ; `EnvoyeurEmailSmtp` envoie vraiment par SMTP, et
-  `EnvoyeurEmailConsole` prend le relais si le SMTP est désactivé. Les deux implémentations d'un
-  même contrat ne doivent jamais coexister : `@ConditionalOnProperty` (sur `samanatteu.mail.enabled`)
-  fait la bascule, et un jour `EnvoyeurSmsOrange implements EnvoyeurSms` suffira — sans toucher
-  aux services. Les tests en profitent : ils remplacent les envoyeurs par des faux pour simuler
-  une panne.
+  `EnvoyeurSms` et un `EnvoyeurEmail` (interfaces). `EnvoyeurSmsTwilio` envoie vraiment par l'API
+  Twilio, `EnvoyeurSmsConsole` écrit dans la console ; de même pour l'email
+  (`EnvoyeurEmailSmtp` / `EnvoyeurEmailConsole`). Les deux implémentations d'un même contrat ne
+  doivent jamais coexister : `@ConditionalOnProperty` (sur `samanatteu.mail.enabled` et
+  `samanatteu.sms.twilio.enabled`) fait la bascule. Les tests en profitent : ils remplacent les
+  envoyeurs par des faux pour simuler une panne.
+- **Un SMS ne part jamais « par accident » : le numéro est déjà en E.164.** Le fournisseur veut
+  `+221771234566`, la base stocke exactement ça : aucune conversion dans l'envoi. C'est le
+  bénéfice direct de la normalisation des numéros (voir la décision E.164 plus bas).
 - **Une règle sur une entité vit dans l'entité** : « cette tontine est-elle gérée par tel
   utilisateur ? » est `Tontine.estGereePar(telephone)`. Son usage (« sinon 403 ») est
   `UtilisateurConnecte.verifierGestionnaire(tontine)`, partagé par les services de tontines,
@@ -704,7 +706,7 @@ Le développement suit un planning en 8 phases.
 | 3 | Tontines, membres, participations | ✅ tontines et cycle de vie, participations (doublons, parts, propriété, lecture filtrée par rôle) ; reste à trancher : comment devient-on `GESTIONNAIRE` |
 | 4 | Cycles et cotisations (calcul du montant dû, retards, reçu PDF) | ✅ ouverture, paiements, clôture avec retards, lecture filtrée, historique des paiements (journal financier), **reçu PDF d'un paiement** (`GET /transaction/{id}/recu`) |
 | 5 | Tirage au sort, prêts et échéanciers | ✅ tirage (urne, compensation, versements, reports, `nbCycles` calculé), caisse de prêts, prêts, échéanciers, remboursements et retards |
-| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (SMS simulé, **email SMTP réel en HTML Thymeleaf**, rappels J-3), import de membres par CSV et Excel ; reste le branchement d'un vrai fournisseur SMS |
+| 6 | Notifications e-mail et SMS, invitations, import Excel/CSV | 🚧 invitations (lien de groupe, invitation individuelle), notifications (**email SMTP réel en HTML Thymeleaf**, **SMS Twilio réel** — le compte trial bloque les messages libres), rappels J-3, import de membres par CSV et Excel ; reste les webhooks de statut de livraison |
 | 7-8 | Tableaux de bord par rôle, finitions | ✅ tableaux de bord du gestionnaire (tontines, retards, prêts, tirages à faire, gains à verser), du membre (ses tontines, ce qu'il doit, ses prêts, ses gains) et de l'administrateur (comptes par rôle, tontines par statut) |
 
 ### Limites connues
@@ -724,8 +726,12 @@ Le développement suit un planning en 8 phases.
 - L'import n'est pas transactionnel : s'il est interrompu au milieu (panne), les lignes déjà
   traitées restent importées sans rapport enregistré ; le relancer est sans danger (les membres
   déjà inscrits sont signalés, pas dupliqués).
-- Les **SMS** sont **simulés** (écrits dans la console) : aucun fournisseur (Orange SMS API,
-  Twilio) n'est encore branché. Les **emails** partent vraiment par SMTP, en HTML Thymeleaf.
+- Les **SMS** partent **vraiment** par l'API Twilio quand `TWILIO_ENABLED=true` (identifiants dans
+  le `.env`), et sont simulés dans les logs sinon. Deux limites : un **compte Twilio trial refuse
+  les messages libres** (« trial accounts have limited parameter access ») — il faut un compte
+  upgradé, ou des templates approuvés ; et aucun **webhook de statut de livraison** n'est encore
+  branché (ngrok ou une URL publique), donc le statut d'un SMS reste `ENVOYE`/`ECHEC` selon la
+  seule réponse de l'API d'envoi. Les **emails** partent vraiment par SMTP, en HTML Thymeleaf.
 - Un seul modèle d'email pour l'instant (`templates/emails/generique.html`) : le message est
   construit en texte par les services, puis habillé par le template. Un modèle par type
   (montant, date, lien) demanderait de passer un contexte structuré au lieu d'un message.
