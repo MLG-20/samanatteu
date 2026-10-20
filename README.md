@@ -435,8 +435,8 @@ rapport avec leur numéro de ligne (celui du tableur) :
 }
 ```
 
-- Une ligne est refusée si : le nom, le prénom ou le téléphone manque ; le téléphone n'est pas un
-  mobile sénégalais (9 chiffres commençant par 7) ; l'email est mal écrit ou déjà pris par un
+- Une ligne est refusée si : le nom, le prénom ou le téléphone manque ; le téléphone n'est ni un
+  mobile sénégalais (9 chiffres commençant par 7) ni un numéro E.164 ; l'email est mal écrit ou déjà pris par un
   autre compte ; le nombre de parts n'est pas un entier à partir de 1 ; le téléphone apparaît déjà
   plus haut dans le fichier ; le membre participe déjà à la tontine.- Pour chaque ligne acceptée : le compte du téléphone est **réutilisé** s'il existe, sinon un
   compte `MEMBRE` est créé **sans mot de passe** (personne ne peut s'y connecter tant que le membre
@@ -728,11 +728,11 @@ Le développement suit un planning en 8 phases.
 - Un seul modèle d'email pour l'instant (`templates/emails/generique.html`) : le message est
   construit en texte par les services, puis habillé par le template. Un modèle par type
   (montant, date, lien) demanderait de passer un contexte structuré au lieu d'un message.
-- L'**E.164 n'est pas encore en base** : `NumeroTelephone` et `IndicatifPays` existent et sont
-  testés, mais les services ne normalisent pas encore les numéros saisis, et la base stocke
-  toujours le format local. Reste à faire : normaliser aux entrées (inscription, connexion, mot de
-  passe oublié, import CSV, invitation), la migration `V8`, et l'adaptation des tests. La bascule
-  invalidera les tokens JWT en cours (le téléphone est l'identité).
+- L'**E.164 est en base** : les numéros sont normalisés à l'entrée (inscription, connexion, mot de
+  passe oublié, import CSV, invitation) et stockés en `+221771234566` (migration `V8`). L'API
+  accepte toujours le format local (`771234566`, `0771234566`) et l'E.164 : c'est le serveur qui
+  convertit. Le format national affiché (`+221 77 123 45 66`) reste sénégalais — il devra devenir
+  une donnée quand la plateforme servira plusieurs pays.
 - Les invitations ne sont pas **envoyées** par l'application : la gestionnaire copie le lien dans
   WhatsApp. Un SMS d'invitation individuelle demanderait de tracer un envoi vers un numéro qui n'a
   pas encore de compte (`notification.destinataire` est obligatoire) : écarté pour l'instant.
@@ -785,9 +785,10 @@ reste lisible.
   local, deux clients de pays différents se marchent dessus dans la colonne `UNIQUE`. Le format
   E.164 (`+221771234566`) est international par nature, et c'est exactement ce qu'exigent les
   fournisseurs SMS. L'objet valeur `NumeroTelephone` porte la règle (validation, retrait du `0`
-  national, affichage) ; `IndicatifPays` est le **seul** endroit qui lit l'indicatif
-  (`samanatteu.pays-defaut`), pour que le jour où la plateforme serve plusieurs pays, seul cet
-  objet change de source. Voir
+  national, affichage) ; `TelephoneService` est le **seul** endroit qui normalise (il lit
+  `samanatteu.pays-defaut`), pour que le jour où la plateforme serve plusieurs pays, seul cet
+  objet change de source. La normalisation se fait **à l'entrée seulement** : un numéro lu en
+  base est déjà en E.164. Voir
   [`Notes_Cours/27_Numero_Telephone_E164.md`](../Notes_Cours/27_Numero_Telephone_E164.md).
 - **Un statut ne se modifie jamais par un `PUT` libre.** Une ressource avec un cycle de vie
   (`StatutTontine`) n'expose que des actions dédiées (`activer`/`suspendre`/`cloturer`), chacune
