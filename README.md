@@ -438,8 +438,7 @@ rapport avec leur numéro de ligne (celui du tableur) :
 - Une ligne est refusée si : le nom, le prénom ou le téléphone manque ; le téléphone n'est pas un
   mobile sénégalais (9 chiffres commençant par 7) ; l'email est mal écrit ou déjà pris par un
   autre compte ; le nombre de parts n'est pas un entier à partir de 1 ; le téléphone apparaît déjà
-  plus haut dans le fichier ; le membre participe déjà à la tontine.
-- Pour chaque ligne acceptée : le compte du téléphone est **réutilisé** s'il existe, sinon un
+  plus haut dans le fichier ; le membre participe déjà à la tontine.- Pour chaque ligne acceptée : le compte du téléphone est **réutilisé** s'il existe, sinon un
   compte `MEMBRE` est créé **sans mot de passe** (personne ne peut s'y connecter tant que le membre
   ne l'a pas choisi, par « mot de passe oublié ») ; puis le membre est inscrit avec les mêmes règles que les autres voies
   d'inscription, et reçoit le SMS de bienvenue.
@@ -521,7 +520,7 @@ Controller  ──▶  Service  ──▶  Repository  ──▶  PostgreSQL
 
 ```
 src/main/java/com/samanatteu/
-├── config/        SecurityConfig (règles d'accès par route et par rôle)
+├── config/        SecurityConfig (règles d'accès par route et par rôle), IndicatifPays (point unique du pays)
 ├── security/      JwtUtil, JwtAuthFilter, gestionnaires d'erreur 401 / 403, UtilisateurConnecte
 ├── controller/    un contrôleur REST par ressource, regroupés par domaine
 │   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/  dashboard/
@@ -537,6 +536,7 @@ src/main/java/com/samanatteu/
 │   ├── utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
 ├── exception/     exceptions métier (héritent de SamanatteuException, avec leur code HTTP),
 │   ├── auth/  utilisateur/  tontine/  cotisation/  pret/  onboarding/  notification/
+├── valueobject/   objets valeur : NumeroTelephone (E.164, format national, validation)
 └── handler/       GlobalExceptionHandler : transforme les exceptions en réponses JSON
 ```
 
@@ -728,6 +728,11 @@ Le développement suit un planning en 8 phases.
 - Un seul modèle d'email pour l'instant (`templates/emails/generique.html`) : le message est
   construit en texte par les services, puis habillé par le template. Un modèle par type
   (montant, date, lien) demanderait de passer un contexte structuré au lieu d'un message.
+- L'**E.164 n'est pas encore en base** : `NumeroTelephone` et `IndicatifPays` existent et sont
+  testés, mais les services ne normalisent pas encore les numéros saisis, et la base stocke
+  toujours le format local. Reste à faire : normaliser aux entrées (inscription, connexion, mot de
+  passe oublié, import CSV, invitation), la migration `V8`, et l'adaptation des tests. La bascule
+  invalidera les tokens JWT en cours (le téléphone est l'identité).
 - Les invitations ne sont pas **envoyées** par l'application : la gestionnaire copie le lien dans
   WhatsApp. Un SMS d'invitation individuelle demanderait de tracer un envoi vers un numéro qui n'a
   pas encore de compte (`notification.destinataire` est obligatoire) : écarté pour l'instant.
@@ -775,6 +780,15 @@ reste lisible.
 - **L'identité du JWT est le téléphone, pas l'email.** L'email est devenu optionnel à l'inscription
   (téléphone obligatoire, cas d'usage principal). Utiliser l'email comme identité aurait cassé les
   comptes téléphone-only.
+- **Un téléphone est stocké en E.164, jamais en format local.** `771234566` seul est ambigu :
+  le même numéro existe au Sénégal (+221), en Côte d'Ivoire (+225), au Mali (+223) — en format
+  local, deux clients de pays différents se marchent dessus dans la colonne `UNIQUE`. Le format
+  E.164 (`+221771234566`) est international par nature, et c'est exactement ce qu'exigent les
+  fournisseurs SMS. L'objet valeur `NumeroTelephone` porte la règle (validation, retrait du `0`
+  national, affichage) ; `IndicatifPays` est le **seul** endroit qui lit l'indicatif
+  (`samanatteu.pays-defaut`), pour que le jour où la plateforme serve plusieurs pays, seul cet
+  objet change de source. Voir
+  [`Notes_Cours/27_Numero_Telephone_E164.md`](../Notes_Cours/27_Numero_Telephone_E164.md).
 - **Un statut ne se modifie jamais par un `PUT` libre.** Une ressource avec un cycle de vie
   (`StatutTontine`) n'expose que des actions dédiées (`activer`/`suspendre`/`cloturer`), chacune
   avec ses transitions autorisées ; le `PUT` générique n'écrit plus le statut du tout. Voir

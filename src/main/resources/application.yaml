@@ -33,6 +33,11 @@ spring:
 samanatteu:
   mail:
     enabled: true
+  # Indicatif pays utilisé pour convertir un numéro local en E.164.
+  # C'est le SEUL endroit où le pays de la plateforme est écrit : tous les
+  # appelants passent par IndicatifPays. Quand la plateforme servira plusieurs
+  # pays, seule cette valeur changera de source (le pays du tenant).
+  pays-defaut: "+221"
 
 jwt:
   secret: ${JWT_SECRET}
