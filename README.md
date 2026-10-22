@@ -31,7 +31,7 @@ cycles, les cotisations, les tirages et les prêts.
 
 ## Stack technique
 
-- **Java 21**, **Spring Boot 4.1.1** (Maven wrapper inclus)
+- **Java 21**, **Spring Boot 4.1.2** (Maven wrapper inclus)
 - Spring Web (REST), Spring Data JPA / Hibernate, Bean Validation
 - Spring Security + **JWT** ([jjwt](https://github.com/jwtk/jjwt) 0.12.6), mots de passe hachés en BCrypt
 - **PostgreSQL**, schéma versionné avec **Flyway** (12.4)
