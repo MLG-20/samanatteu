@@ -9,12 +9,14 @@ import com.samanatteu.dto.auth.MotDePasseOublieDTO;
 import com.samanatteu.dto.auth.RefreshRequestDTO;
 import com.samanatteu.dto.auth.ReinitialisationMotDePasseDTO;
 import com.samanatteu.dto.auth.TokenDTO;
+import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.service.auth.AuthService;
 import com.samanatteu.service.auth.MotDePasseOublieService;
 
 import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,6 +40,15 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<TokenDTO> refresh(@Valid @RequestBody RefreshRequestDTO refreshRequestDTO) {
         return ResponseEntity.ok(authService.refresh(refreshRequestDTO));
+    }
+
+    // Qui je suis : l'utilisateur porté par le token. Le front en a besoin pour
+    // afficher le bon tableau de bord et le bon menu.
+    // La route est protégée : /auth/login et /auth/refresh sont les seules
+    // en permitAll, tout le reste tombe sur anyRequest().authenticated().
+    @GetMapping("/me")
+    public UtilisateurDTO moi() {
+        return authService.moi();
     }
 
     // Pas d'id dans l'adresse : le compte est celui du token. 204 = fait, rien à renvoyer.

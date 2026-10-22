@@ -7,6 +7,7 @@ import com.samanatteu.dto.auth.ChangementMotDePasseDTO;
 import com.samanatteu.dto.auth.LoginDTO;
 import com.samanatteu.dto.auth.RefreshRequestDTO;
 import com.samanatteu.dto.auth.TokenDTO;
+import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.auth.AncienMotDePasseIncorrectException;
@@ -88,6 +89,24 @@ public class AuthService {
         String accessToken = jwtUtil.generateToken(utilisateur);
         String newRefreshToken = jwtUtil.generateRefreshToken(utilisateur);
         return new TokenDTO(accessToken, newRefreshToken);
+    }
+
+    // Qui je suis : l'utilisateur porté par le token (c'est son téléphone).
+    // Le front en a besoin pour afficher le bon tableau de bord et le bon menu.
+    // On renvoie le DTO de sortie (jamais l'entité) : le mot de passe n'existe
+    // pas dans UtilisateurDTO, il ne peut donc pas sortir.
+    public UtilisateurDTO moi() {
+        Utilisateur utilisateur = utilisateurRepository.findByTelephone(utilisateurConnecte.telephone())
+                .orElseThrow(() -> new AccesRefuseException());
+        UtilisateurDTO dto = new UtilisateurDTO();
+        dto.setId(utilisateur.getId());
+        dto.setNom(utilisateur.getNom());
+        dto.setPrenom(utilisateur.getPrenom());
+        dto.setTelephone(utilisateur.getTelephone());
+        dto.setEmail(utilisateur.getEmail());
+        dto.setRole(utilisateur.getRole());
+        dto.setActif(utilisateur.getActif());
+        return dto;
     }
 
     // Le compte modifié est celui du token, jamais un identifiant envoyé par le
