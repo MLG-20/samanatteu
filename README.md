@@ -39,6 +39,8 @@ cycles, les cotisations, les tirages et les prêts.
 - Import de fichiers : [OpenCSV](https://opencsv.sourceforge.net/) 5.9 (CSV), [Apache POI](https://poi.apache.org/) 5.4.1 (Excel `.xlsx`)
 - Tests : JUnit 5, Mockito, MockMvc, Spring Security Test
 - Doc API : [springdoc-openapi](https://springdoc.org/) 3.1.1 (OpenAPI 3 + Swagger UI, §7.1 du CDC)
+- Front : **Angular 21** dans le dépôt voisin [`samanatteu-front`](../samanatteu-front)
+  (tableaux de bord membre / gestionnaire / admin) — cette API est son backend.
 
 ## Démarrage rapide
 
@@ -124,6 +126,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
 | `POST` | `/auth/login` | public | connexion par **email ou téléphone** |
+| `GET` | `/auth/me` | connecté | l'utilisateur porté par le token (id, nom, prénom, téléphone, email, rôle) : le front en a besoin pour afficher le bon tableau de bord |
 | `POST` | `/auth/refresh` | public | échange un refresh token contre une nouvelle paire de tokens |
 | `PUT` | `/auth/mot-de-passe` | connecté | changer **son propre** mot de passe : `ancienMotDePasse` (preuve d'identité) et `nouveauMotDePasse` (8 caractères au moins) ; `204`, ou `400` si l'ancien est faux |
 | `POST` | `/auth/deconnexion` | connecté | ferme **toutes** les sessions du compte : ses refresh tokens déjà émis sont refusés (`204`) |
