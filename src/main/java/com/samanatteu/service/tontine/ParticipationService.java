@@ -139,6 +139,11 @@ public class ParticipationService {
         ParticipationDTO dto = new ParticipationDTO();
         dto.setId(Participation.getId());
         dto.setMembreId(Participation.getMembre().getId());
+        // Le membre est déjà chargé avec la participation (@ManyToOne = EAGER) :
+        // lire son nom ne coûte aucune requête de plus.
+        dto.setMembrePrenom(Participation.getMembre().getPrenom());
+        dto.setMembreNom(Participation.getMembre().getNom());
+        dto.setMembreTelephone(Participation.getMembre().getTelephone());
         dto.setTontineId(Participation.getTontine().getId());
         dto.setNombreParts(Participation.getNombreParts());
         dto.setDateAdhesion(Participation.getDateAdhesion());

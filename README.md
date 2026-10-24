@@ -1171,6 +1171,13 @@ reste lisible.
   tests de sécurité aussi : pour une fonctionnalité, on ouvre le même sous-dossier dans chaque
   couche. Seule la ligne `package` de chaque fichier a changé (déplacements faits avec `git mv`
   pour garder l'historique) ; aucune URL n'a bougé, et la suite de tests est restée verte.
+- **Le nom du membre est recopié dans `ParticipationDTO`.** Le DTO ne portait que `membreId` :
+  l'écran « Membres » d'une tontine (front) ne pouvait afficher que « Membre n°3 », et le
+  gestionnaire n'a pas accès à `GET /utilisateur` (réservé à l'ADMIN) pour retrouver les noms.
+  Plutôt qu'imbriquer l'entité `Utilisateur` (mot de passe haché, rôle…), on recopie trois champs
+  à plat : `membrePrenom`, `membreNom`, `membreTelephone`. Aucune fuite nouvelle : la liste est
+  déjà filtrée par rôle (un gestionnaire ne voit que les membres de ses tontines, un membre que
+  lui-même). Aucune requête en plus non plus : `Participation.membre` est déjà chargé (EAGER).
 
 ### Bugs trouvés et corrigés
 

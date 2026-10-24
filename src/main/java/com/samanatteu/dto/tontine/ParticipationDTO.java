@@ -22,6 +22,15 @@ public class ParticipationDTO {
 
     private Long membreId;
 
+    // Recopiés depuis le membre (pas l'entité Utilisateur entière) : le
+    // gestionnaire voit qui participe sans un 2e appel, et rien de sensible
+    // (mot de passe, rôle) ne sort.
+    private String membrePrenom;
+
+    private String membreNom;
+
+    private String membreTelephone;
+
     private Long tontineId;
 
     private Integer nombreParts;

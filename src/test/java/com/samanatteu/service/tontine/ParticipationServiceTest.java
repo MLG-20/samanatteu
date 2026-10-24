@@ -388,6 +388,25 @@ class ParticipationServiceTest {
         verify(participationRepository, never()).findByTontineGestionnaireTelephone(any());
     }
 
+    // Le DTO porte le nom et le téléphone du membre (le front affiche « Fatou
+    // Ndiaye », plus « Membre n°1 »), mais seulement ces champs-là.
+    @Test
+    void listParticipation_recopieLeNomEtLeTelephoneDuMembre() {
+        Participation p = participationEnBase(tontineDe770000101(StatutTontine.ACTIVE), 2);
+        p.getMembre().setPrenom("Fatou");
+        p.getMembre().setNom("Ndiaye");
+        p.getMembre().setTelephone("+221771110002");
+        when(participationRepository.findByTontineGestionnaireTelephone("770000101")).thenReturn(List.of(p));
+        connecter("770000101", "ROLE_GESTIONNAIRE");
+
+        ParticipationDTO dto = participationService.listParticipation().get(0);
+
+        assertEquals(30L, dto.getMembreId());
+        assertEquals("Fatou", dto.getMembrePrenom());
+        assertEquals("Ndiaye", dto.getMembreNom());
+        assertEquals("+221771110002", dto.getMembreTelephone());
+    }
+
     // ---------------------------------------------------------- notifications
 
     // SMS de bienvenue au membre inscrit, avec la participation ENREGISTRÉE.
