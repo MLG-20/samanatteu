@@ -10,10 +10,12 @@ import com.samanatteu.enums.tontine.StatutTontine;
 public interface TontineRepository extends JpaRepository<Tontine, Long> {
     List<Tontine> findByGestionnaireTelephone(String telephone);
 
-    // Le nombre de tontines d'une gestionnaire : pour le quota de la formule
-    // d'abonnement. On compte en base (COUNT) au lieu de charger les lignes
-    // pour les compter.
-    long countByGestionnaireTelephone(String telephone);
+    // Le nombre de tontines EN COURS d'une gestionnaire : pour le quota de la
+    // formule d'abonnement. On l'appelle avec TERMINEE : une tontine finie ne
+    // compte plus (le quota limite le travail du moment, pas l'historique).
+    // "StatutNot" = WHERE statut <> ?. On compte en base (COUNT) au lieu de
+    // charger les lignes pour les compter.
+    long countByGestionnaireTelephoneAndStatutNot(String telephone, StatutTontine statut);
 
     Long countByStatut(StatutTontine statut);
 }

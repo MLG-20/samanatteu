@@ -70,8 +70,11 @@ public class TontineService {
         // (Les tontines DÉJÀ créées continuent de fonctionner : les membres ont
         // de l'argent en jeu.) Le contrôle est ici, pas dans le contrôleur.
         Abonnement abonnement = abonnementService.exigerAbonnementActif(utilisateurConnecte.telephone());
+        // Seules les tontines EN COURS comptent : une tontine terminée ne
+        // bloque pas la suivante.
         abonnementService.verifierQuotaTontines(abonnement,
-                (int) tontineRepository.countByGestionnaireTelephone(utilisateurConnecte.telephone()));
+                (int) tontineRepository.countByGestionnaireTelephoneAndStatutNot(
+                        utilisateurConnecte.telephone(), StatutTontine.TERMINEE));
 
         Tontine tontine = new Tontine();
 

@@ -194,6 +194,32 @@ class TontineServiceTest {
         assertEquals(18L, resultat.getGestionnaireId());
     }
 
+    // Le quota de la formule ne compte que les tontines EN COURS : une tontine
+    // TERMINEE ne bloque pas la création de la suivante.
+    @Test
+    void createTontine_leQuotaIgnoreLesTontinesTerminees() {
+        Utilisateur a = new Utilisateur();
+        a.setId(18L);
+        a.setTelephone("770000101");
+        when(utilisateurRepository.findByTelephone("770000101")).thenReturn(Optional.of(a));
+        connecterCommeGestionnaire("770000101");
+        // 2 tontines en cours (les terminées sont exclues par la requête elle-même).
+        when(tontineRepository.countByGestionnaireTelephoneAndStatutNot("770000101", StatutTontine.TERMINEE))
+                .thenReturn(2L);
+        when(tontineRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CreationTontineDTO demande = new CreationTontineDTO();
+        demande.setNom("Mbambara");
+        demande.setMontantCaissePret(BigDecimal.ZERO);
+        demande.setFrequence(FrequenceTontine.MOIS);
+        demande.setIntervalle(1);
+
+        tontineService.createTontine(demande);
+
+        // Le quota reçoit le compte des tontines en cours, pas de toutes.
+        verify(abonnementService).verifierQuotaTontines(any(), eq(2));
+    }
+
     // Protège la règle "un gestionnaire ne voit que SES tontines" : listTontine doit interroger le
     // repository avec le téléphone du token, et jamais avec findAll() (qui renverrait tout à tout le monde).
     @Test

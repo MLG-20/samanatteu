@@ -77,6 +77,10 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/abonnement/mon").hasRole("GESTIONNAIRE")
                                                 // Les formules d'abonnement : l'ADMIN les modifie (quotas,
                                                 // prix) sans redéployer l'application.
+                                                // Les formules À LA VENTE sont publiques : la page d'accueil
+                                                // affiche les tarifs à un visiteur non connecté. Placée AVANT
+                                                // "/formule/**" : Spring applique la première règle qui correspond.
+                                                .requestMatchers(HttpMethod.GET, "/formule/disponibles").permitAll()
                                                 .requestMatchers(HttpMethod.GET, "/formule", "/formule/**").hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.POST, "/formule").hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.PUT, "/formule/**").hasRole("ADMIN")

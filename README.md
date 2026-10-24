@@ -1178,6 +1178,20 @@ reste lisible.
   à plat : `membrePrenom`, `membreNom`, `membreTelephone`. Aucune fuite nouvelle : la liste est
   déjà filtrée par rôle (un gestionnaire ne voit que les membres de ses tontines, un membre que
   lui-même). Aucune requête en plus non plus : `Participation.membre` est déjà chargé (EAGER).
+- **Le quota de tontines ne compte que les tontines en cours.** Au départ, le quota comptait
+  toutes les tontines de la gestionnaire, terminées comprises : avec la formule à 1 tontine, une
+  gestionnaire dont la tontine était finie ne pouvait plus jamais en lancer une autre sans changer
+  de formule. Le quota limite le travail du moment, pas l'historique : seules les tontines non
+  `TERMINEE` comptent (`EN_ATTENTE`, `ACTIVE`, et `SUSPENDUE`, qui peut reprendre). Le comptage
+  reste en base (`countByGestionnaireTelephoneAndStatutNot`), et c'est le même que celui qu'affiche
+  l'écran « Mon abonnement » du front.
+- **Les formules à la vente sont publiques.** La page d'accueil du front affichait des offres
+  écrites en dur, sans lien avec la table `formule` : un prix changé par l'ADMIN n'y apparaissait
+  pas. `GET /formule/disponibles` est donc ouvert sans connexion (une grille tarifaire n'a rien de
+  secret), et la page lit les vraies formules. `GET /formule`, qui montre aussi les formules
+  retirées de la vente, reste réservé à l'ADMIN : la règle publique est placée avant
+  `/formule/**`, car Spring Security applique la première règle qui correspond. Un test de
+  sécurité vérifie que l'ouverture de l'une n'ouvre pas l'autre.
 
 ### Bugs trouvés et corrigés
 
