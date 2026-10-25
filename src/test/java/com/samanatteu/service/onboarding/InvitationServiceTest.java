@@ -1,5 +1,6 @@
 package com.samanatteu.service.onboarding;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -407,6 +408,41 @@ class InvitationServiceTest {
 
         assertThrows(InvitationDejaUtiliseeException.class, () -> invitationService.rejoindre("jeton"));
         verifyNoInteractions(participationService);
+    }
+
+    // ------------------------------------------- inscription d'un invité
+
+    // Lien de groupe valide : n'importe quel numéro peut créer son compte.
+    @Test
+    void verifierPourInscription_lienDeGroupeValide_accepteToutNumero() {
+        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation(TypeInvitation.GROUPE)));
+
+        assertDoesNotThrow(() -> invitationService.verifierPourInscription("jeton", "+221779999999"));
+        // Rien n'est consommé ni inscrit : c'est le rôle de rejoindre().
+        verify(invitationRepository, never()).save(any());
+        verifyNoInteractions(participationService);
+    }
+
+    // Invitation nominative transférée : on ne crée même pas le compte de l'intrus.
+    @Test
+    void verifierPourInscription_invitationNominativeAvecUnAutreNumero_estRefusee() {
+        Invitation invitation = invitation(TypeInvitation.INDIVIDUELLE);
+        invitation.setTelephone("+221771234566");
+        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
+
+        assertThrows(AccesRefuseException.class,
+                () -> invitationService.verifierPourInscription("jeton", "+221779999999"));
+    }
+
+    // Les contrôles du lien s'appliquent aussi avant l'inscription.
+    @Test
+    void verifierPourInscription_lienExpire_estRefuse() {
+        Invitation invitation = invitation(TypeInvitation.GROUPE);
+        invitation.setExpireAt(LocalDateTime.now().minusHours(1));
+        when(invitationRepository.findByToken("jeton")).thenReturn(Optional.of(invitation));
+
+        assertThrows(InvitationExpireeException.class,
+                () -> invitationService.verifierPourInscription("jeton", "+221771234566"));
     }
 
     // ---------------------------------------------------------------- liste

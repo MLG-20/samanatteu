@@ -15,6 +15,8 @@ import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
+import com.samanatteu.exception.onboarding.InvitationRequiseException;
+import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
 import com.samanatteu.exception.utilisateur.EmailObligatoireException;
 import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
@@ -31,10 +33,12 @@ public class UtilisateurService {
     private final UtilisateurConnecte utilisateurConnecte;
     private final TelephoneService telephoneService;
     private final ParticipationRepository participationRepository;
+    private final InvitationService invitationService;
 
     public UtilisateurService(UtilisateurRepository utilisateurRepository, PasswordEncoder passwordEncoder,
             UtilisateurConnecte utilisateurConnecte, TelephoneService telephoneService,
-            ParticipationRepository participationRepository) {
+            ParticipationRepository participationRepository, InvitationService invitationService) {
+        this.invitationService = invitationService;
         this.utilisateurRepository = utilisateurRepository;
         this.passwordEncoder = passwordEncoder;
         this.utilisateurConnecte = utilisateurConnecte;
@@ -83,6 +87,16 @@ public class UtilisateurService {
         // Le numéro saisi est normalisé en E.164 : "775550000" et "+221775550000" sont
         // le même compte, pas deux.
         String telephone = telephoneService.normaliser(dto.getTelephone());
+        // Un visiteur ne devient MEMBRE que par un lien d'invitation valide (et,
+        // pour une invitation nominative, avec le numéro invité : d'où le contrôle
+        // APRÈS la normalisation). Une gestionnaire connectée ajoute ses membres
+        // sans lien.
+        if (dto.getRole() == RoleUtilisateur.MEMBRE && !utilisateurConnecte.aLeRole(RoleUtilisateur.GESTIONNAIRE)) {
+            if (dto.getJetonInvitation() == null || dto.getJetonInvitation().isBlank()) {
+                throw new InvitationRequiseException();
+            }
+            invitationService.verifierPourInscription(dto.getJetonInvitation(), telephone);
+        }
         // L'email est OBLIGATOIRE pour les gestionnaires (elles paient : on doit
         // pouvoir les facturer) et pour les administrateurs. Les membres l'ont
         // toujours facultatif — d'où un contrôle dépendant du rôle, que Bean

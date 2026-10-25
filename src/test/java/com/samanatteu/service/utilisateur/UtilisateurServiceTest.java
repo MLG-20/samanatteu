@@ -8,8 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -35,6 +37,9 @@ import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
+import com.samanatteu.exception.onboarding.InvitationExpireeException;
+import com.samanatteu.exception.onboarding.InvitationRequiseException;
+import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
 import com.samanatteu.exception.utilisateur.EmailObligatoireException;
 import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
@@ -52,6 +57,9 @@ class UtilisateurServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private ParticipationRepository participationRepository;
+    // Faux par défaut, qui accepte tout jeton : chaque test qui veut un refus le dit.
+    @Mock
+    private InvitationService invitationService;
     // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
@@ -97,6 +105,9 @@ class UtilisateurServiceTest {
         dto.setTelephone("+221775550000");
         dto.setMotDePasse("motdepasse123");
         dto.setRole(role);
+        // Un visiteur ne devient membre que par un lien : les inscriptions de test en
+        // présentent un (ignoré pour les autres rôles).
+        dto.setJetonInvitation("jeton-valide");
         return dto;
     }
 
@@ -281,6 +292,63 @@ class UtilisateurServiceTest {
 
         assertNull(resultat.getEmail());
         verify(utilisateurRepository, never()).existsByEmail(anyString());
+    }
+
+    // ------------------------------------------- membre sur invitation seulement
+
+    // Règle : un visiteur sans lien d'invitation ne devient pas membre (il
+    // arriverait sur un espace vide), et rien n'est enregistré.
+    @Test
+    void createUtilisateur_unMembreAnonymeSansJeton_estRefuse() {
+        connecterCommeAnonyme();
+        CreationUtilisateurDTO dto = inscription(RoleUtilisateur.MEMBRE);
+        dto.setJetonInvitation(null);
+
+        assertThrows(InvitationRequiseException.class, () -> utilisateurService.createUtilisateur(dto));
+
+        verify(utilisateurRepository, never()).save(any());
+        verifyNoInteractions(invitationService);
+    }
+
+    // Le jeton est vérifié avec le numéro NORMALISÉ : une invitation nominative
+    // pour "+221775550000" doit reconnaître la saisie "775550000".
+    @Test
+    void createUtilisateur_unMembreAvecJeton_verifieLInvitationAvecLeNumeroNormalise() {
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        connecterCommeAnonyme();
+        CreationUtilisateurDTO dto = inscription(RoleUtilisateur.MEMBRE);
+        dto.setTelephone("775550000");
+
+        utilisateurService.createUtilisateur(dto);
+
+        verify(invitationService).verifierPourInscription("jeton-valide", "+221775550000");
+    }
+
+    // Lien expiré (ou annulé, ou d'un autre numéro) : le refus remonte, pas de compte.
+    @Test
+    void createUtilisateur_unMembreAvecUnLienInvalide_estRefuse() {
+        connecterCommeAnonyme();
+        doThrow(new InvitationExpireeException()).when(invitationService)
+                .verifierPourInscription("jeton-valide", "+221775550000");
+
+        assertThrows(InvitationExpireeException.class,
+                () -> utilisateurService.createUtilisateur(inscription(RoleUtilisateur.MEMBRE)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    // Une gestionnaire connectée ajoute un membre sans lien : c'est elle qui invite.
+    @Test
+    void createUtilisateur_unMembreCreeParUneGestionnaire_nExigePasDeJeton() {
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("+221770000101", null,
+                        List.of(new SimpleGrantedAuthority("ROLE_GESTIONNAIRE"))));
+        CreationUtilisateurDTO dto = inscription(RoleUtilisateur.MEMBRE);
+        dto.setJetonInvitation(null);
+
+        assertEquals(RoleUtilisateur.MEMBRE, utilisateurService.createUtilisateur(dto).getRole());
+        verifyNoInteractions(invitationService);
     }
 
     // ------------------------------------------- frontière ADMIN / membres

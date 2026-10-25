@@ -141,6 +141,16 @@ public class InvitationService {
         return dto;
     }
 
+    // Avant de créer le compte d'un invité (POST /utilisateur) : le lien doit être
+    // utilisable, et une invitation nominative ne vaut que pour le numéro invité.
+    // Ne consomme rien : c'est rejoindre() qui inscrit dans la tontine ensuite.
+    public void verifierPourInscription(String token, String telephone) {
+        Invitation invitation = trouverInvitationValide(token);
+        if (invitation.getTelephone() != null && !invitation.getTelephone().equals(telephone)) {
+            throw new AccesRefuseException();
+        }
+    }
+
     // Contrôles communs à la consultation et à l'acceptation d'un lien.
     // Expiration jugée sur la date, pas sur le statut EXPIRE (jamais écrit par personne).
     private Invitation trouverInvitationValide(String token) {

@@ -38,4 +38,10 @@ public class CreationUtilisateurDTO {
 
     @NotNull
     private RoleUtilisateur role;
+
+    // Le jeton du lien d'invitation (/rejoindre/{jeton}). OBLIGATOIRE pour un
+    // visiteur qui s'inscrit comme MEMBRE : on ne devient membre que sur
+    // invitation. Ignoré pour un gestionnaire, ou si une gestionnaire connectée
+    // crée le compte de l'un de ses membres.
+    private String jetonInvitation;
 }
