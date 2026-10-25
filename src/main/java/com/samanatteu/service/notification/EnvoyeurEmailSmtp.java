@@ -42,10 +42,19 @@ public class EnvoyeurEmailSmtp implements EnvoyeurEmail {
 
     @Override
     public void envoyer(String email, String sujet, String message) {
+        envoyerAvecLien(email, sujet, message, null, null);
+    }
+
+    // Un seul modèle pour les deux : le bouton n'apparaît que si un lien est
+    // donné (th:if dans emails/generique.html).
+    @Override
+    public void envoyerAvecLien(String email, String sujet, String message, String libelleBouton, String lien) {
         try {
             Context contexte = new Context();
             contexte.setVariable("sujet", sujet);
             contexte.setVariable("message", message);
+            contexte.setVariable("libelleBouton", libelleBouton);
+            contexte.setVariable("lien", lien);
             String html = templateEngine.process("emails/generique", contexte);
 
             MimeMessage mail = mailSender.createMimeMessage();

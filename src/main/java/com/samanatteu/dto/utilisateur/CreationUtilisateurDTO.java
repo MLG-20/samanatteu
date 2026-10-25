@@ -44,4 +44,9 @@ public class CreationUtilisateurDTO {
     // invitation. Ignoré pour un gestionnaire, ou si une gestionnaire connectée
     // crée le compte de l'un de ses membres.
     private String jetonInvitation;
+
+    // La formule choisie par une gestionnaire qui s'inscrit par le site public :
+    // son essai gratuit de 30 jours démarrera dessus. OBLIGATOIRE dans ce cas,
+    // ignorée sinon (l'ADMIN qui crée une gestionnaire active l'abonnement à part).
+    private Long formuleId;
 }

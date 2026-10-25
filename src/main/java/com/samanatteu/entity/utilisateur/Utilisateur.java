@@ -62,6 +62,13 @@ public class Utilisateur extends Auditable {
     @Column(name = "version_sessions")
     private int versionSessions;
 
+    // false seulement pour une gestionnaire inscrite par le site public, tant
+    // qu'elle n'a pas cliqué le lien reçu : la connexion lui est refusée.
+    // Initialisé à true : Hibernate écrit la valeur du champ (le DEFAULT de la
+    // base ne joue pas), et tous les autres comptes sont vérifiés d'office.
+    @Column(name = "email_verifie")
+    private boolean emailVerifie = true;
+
     // Côté inverse de Tontine.gestionnaire : pas de colonne ici, la clé étrangère
     // gestionnaire_id est dans la table tontine.
     @OneToMany(mappedBy = "gestionnaire")

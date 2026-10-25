@@ -20,4 +20,11 @@ public class EnvoyeurEmailConsole implements EnvoyeurEmail {
     public void envoyer(String email, String sujet, String message) {
         logger.info("EMAIL (simulé) à {} — {} : {}", email, sujet, message);
     }
+
+    // Sans SMTP, le lien s'affiche dans les logs : on peut tester le parcours
+    // (copier le lien dans le navigateur) sans boîte mail.
+    @Override
+    public void envoyerAvecLien(String email, String sujet, String message, String libelleBouton, String lien) {
+        logger.info("EMAIL (simulé) à {} — {} : {} [{}] {}", email, sujet, message, libelleBouton, lien);
+    }
 }

@@ -11,6 +11,7 @@ import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.auth.AncienMotDePasseIncorrectException;
+import com.samanatteu.exception.auth.EmailNonVerifieException;
 import com.samanatteu.exception.auth.IdentifiantsInvalidesException;
 import com.samanatteu.exception.auth.RefreshTokenInvalideException;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
@@ -55,6 +56,11 @@ public class AuthService {
         boolean motDePasseValide = passwordEncoder.matches(loginDTO.getMotDePasse(), utilisateur.getMotDePasse());
         if (!motDePasseValide) {
             throw new IdentifiantsInvalidesException();
+        }
+        // APRÈS le mot de passe : seul le titulaire apprend que le compte existe.
+        // 403 (et non 401) : le front reconnaît ce cas et propose « Renvoyer l'email ».
+        if (!utilisateur.isEmailVerifie()) {
+            throw new EmailNonVerifieException();
         }
         String accessToken = jwtUtil.generateToken(utilisateur);
         String refreshToken = jwtUtil.generateRefreshToken(utilisateur);

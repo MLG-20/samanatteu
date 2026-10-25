@@ -13,6 +13,18 @@
         <!-- th:text : la variable EST le texte de l'élément. -->
         <p th:text="${message}">Le message</p>
 
+        <!-- th:if : le bloc n'existe que si un lien est donné (envoyerAvecLien).
+             th:href : l'URL vient de la variable, échappée par Thymeleaf. -->
+        <div th:if="${lien}" style="margin: 28px 0;">
+            <a th:href="${lien}" th:text="${libelleBouton}"
+               style="display: inline-block; padding: 12px 22px; background: #2563eb; color: #ffffff;
+                      text-decoration: none; border-radius: 8px; font-weight: bold;">Bouton</a>
+            <p style="color: #888; font-size: 12px; margin-top: 18px;">
+                Le bouton ne s'affiche pas ? Copiez ce lien dans votre navigateur :<br>
+                <span th:text="${lien}" style="word-break: break-all;">https://…</span>
+            </p>
+        </div>
+
         <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
         <p style="color: #888; font-size: 12px;">
             SamaNatteu — message automatique, ne pas répondre.

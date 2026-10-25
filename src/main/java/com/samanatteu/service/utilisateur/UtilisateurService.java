@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.ModificationUtilisateurDTO;
@@ -15,7 +16,14 @@ import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
+import com.samanatteu.entity.abonnement.Formule;
+import com.samanatteu.exception.abonnement.FormuleIntrouvableException;
+import com.samanatteu.exception.abonnement.FormuleNonDisponibleException;
+import com.samanatteu.exception.abonnement.FormuleObligatoireException;
+import com.samanatteu.exception.abonnement.FormuleSurDevisException;
 import com.samanatteu.exception.onboarding.InvitationRequiseException;
+import com.samanatteu.repository.abonnement.FormuleRepository;
+import com.samanatteu.service.auth.VerificationEmailService;
 import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
 import com.samanatteu.exception.utilisateur.EmailObligatoireException;
@@ -34,11 +42,16 @@ public class UtilisateurService {
     private final TelephoneService telephoneService;
     private final ParticipationRepository participationRepository;
     private final InvitationService invitationService;
+    private final FormuleRepository formuleRepository;
+    private final VerificationEmailService verificationEmailService;
 
     public UtilisateurService(UtilisateurRepository utilisateurRepository, PasswordEncoder passwordEncoder,
             UtilisateurConnecte utilisateurConnecte, TelephoneService telephoneService,
-            ParticipationRepository participationRepository, InvitationService invitationService) {
+            ParticipationRepository participationRepository, InvitationService invitationService,
+            FormuleRepository formuleRepository, VerificationEmailService verificationEmailService) {
         this.invitationService = invitationService;
+        this.formuleRepository = formuleRepository;
+        this.verificationEmailService = verificationEmailService;
         this.utilisateurRepository = utilisateurRepository;
         this.passwordEncoder = passwordEncoder;
         this.utilisateurConnecte = utilisateurConnecte;
@@ -71,6 +84,9 @@ public class UtilisateurService {
                 .toList();
     }
 
+    // @Transactional : le compte et son lien de vérification sont écrits ensemble
+    // (pas de gestionnaire non vérifiée sans lien pour se vérifier).
+    @Transactional
     public UtilisateurDTO createUtilisateur(CreationUtilisateurDTO dto) {
         // Ordre des contrôles : le DROIT d'abord, la faisabilité ensuite (même règle que
         // ParticipationService). Un anonyme qui demande un ADMIN reçoit 403, même si son
@@ -116,6 +132,13 @@ public class UtilisateurService {
         if (utilisateurRepository.existsByTelephone(telephone)) {
             throw new TelephoneDejaUtiliseException(telephone);
         }
+        // Une gestionnaire qui s'inscrit SEULE (site public) choisit sa formule et
+        // doit vérifier son email avant de se connecter. Créée par l'ADMIN, elle
+        // est vérifiée d'office (l'ADMIN active son abonnement à part).
+        boolean inscriptionPublique = dto.getRole() == RoleUtilisateur.GESTIONNAIRE
+                && !utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN);
+        Formule formule = inscriptionPublique ? formuleChoisie(dto.getFormuleId()) : null;
+
         Utilisateur utilisateur = new Utilisateur();
         utilisateur.setNom(dto.getNom());
         utilisateur.setPrenom(dto.getPrenom());
@@ -123,9 +146,30 @@ public class UtilisateurService {
         utilisateur.setEmail(dto.getEmail());
         utilisateur.setMotDePasse(passwordEncoder.encode(dto.getMotDePasse()));
         utilisateur.setRole(dto.getRole());
+        utilisateur.setEmailVerifie(!inscriptionPublique);
 
         Utilisateur enregistre = utilisateurRepository.save(utilisateur);
+        if (inscriptionPublique) {
+            verificationEmailService.envoyerLien(enregistre, formule);
+        }
         return convertiUtilisateurDTO(enregistre);
+    }
+
+    // La formule d'un essai : elle doit exister, être en vente, et avoir un prix
+    // (0 = « sur devis » : on passe par la page Contact).
+    private Formule formuleChoisie(Long formuleId) {
+        if (formuleId == null) {
+            throw new FormuleObligatoireException();
+        }
+        Formule formule = formuleRepository.findById(formuleId)
+                .orElseThrow(() -> new FormuleIntrouvableException(formuleId));
+        if (!formule.getActive()) {
+            throw new FormuleNonDisponibleException(formule.getNom());
+        }
+        if (formule.getPrixMensuel() == null || formule.getPrixMensuel().signum() == 0) {
+            throw new FormuleSurDevisException(formule.getNom());
+        }
+        return formule;
     }
 
     public Optional<UtilisateurDTO> updateUtilisateur(Long id, ModificationUtilisateurDTO modifications) {

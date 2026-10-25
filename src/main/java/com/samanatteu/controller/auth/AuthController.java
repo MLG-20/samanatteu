@@ -8,10 +8,13 @@ import com.samanatteu.dto.auth.LoginDTO;
 import com.samanatteu.dto.auth.MotDePasseOublieDTO;
 import com.samanatteu.dto.auth.RefreshRequestDTO;
 import com.samanatteu.dto.auth.ReinitialisationMotDePasseDTO;
+import com.samanatteu.dto.auth.RenvoiVerificationDTO;
 import com.samanatteu.dto.auth.TokenDTO;
+import com.samanatteu.dto.auth.VerificationEmailDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.service.auth.AuthService;
 import com.samanatteu.service.auth.MotDePasseOublieService;
+import com.samanatteu.service.auth.VerificationEmailService;
 
 import jakarta.validation.Valid;
 
@@ -26,10 +29,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 public class AuthController {
     private final AuthService authService;
     private final MotDePasseOublieService motDePasseOublieService;
+    private final VerificationEmailService verificationEmailService;
 
-    public AuthController(AuthService authService, MotDePasseOublieService motDePasseOublieService) {
+    public AuthController(AuthService authService, MotDePasseOublieService motDePasseOublieService,
+            VerificationEmailService verificationEmailService) {
         this.authService = authService;
         this.motDePasseOublieService = motDePasseOublieService;
+        this.verificationEmailService = verificationEmailService;
     }
 
     @PostMapping("/login")
@@ -69,6 +75,21 @@ public class AuthController {
     @PostMapping("/reinitialiser-mot-de-passe")
     public ResponseEntity<Void> reinitialiser(@Valid @RequestBody ReinitialisationMotDePasseDTO dto) {
         motDePasseOublieService.reinitialiser(dto);
+        return ResponseEntity.noContent().build();
+    }
+
+    // Publique : la preuve est le jeton du lien reçu par email. 204 : email
+    // vérifié et essai démarré ; le front envoie ensuite vers la connexion.
+    @PostMapping("/verifier-email")
+    public ResponseEntity<Void> verifierEmail(@Valid @RequestBody VerificationEmailDTO dto) {
+        verificationEmailService.verifier(dto.getJeton());
+        return ResponseEntity.noContent().build();
+    }
+
+    // Toujours 204, que le compte existe ou non : la réponse ne révèle rien.
+    @PostMapping("/renvoyer-verification")
+    public ResponseEntity<Void> renvoyerVerification(@Valid @RequestBody RenvoiVerificationDTO dto) {
+        verificationEmailService.renvoyer(dto);
         return ResponseEntity.noContent().build();
     }
 

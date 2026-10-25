@@ -76,13 +76,15 @@ public class Abonnement {
     private Integer moisCompteur;
 
     // L'abonnement donne-t-il le droit d'agir ?
-    // - ACTIF (décision de la plateforme)
+    // - ACTIF (payé) ou ESSAI (gratuit) : les deux ouvrent les mêmes droits,
+    //   seule la date de fin les distingue ;
     // - et la période n'est pas dépassée (la date est calculée, pas stockée :
     //   aucun job ne peut être en retard, et l'état est toujours juste).
     //
     // dateFin étant le DERNIER JOUR couvert, l'abonnement est encore actif ce
     // jour-là : isBefore (strictement avant) et non isAfter.
     public boolean estActif() {
-        return statut == StatutAbonnement.ACTIF && !dateFin.isBefore(LocalDate.now());
+        return (statut == StatutAbonnement.ACTIF || statut == StatutAbonnement.ESSAI)
+                && !dateFin.isBefore(LocalDate.now());
     }
 }

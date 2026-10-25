@@ -38,6 +38,9 @@ samanatteu:
   # appelants passent par IndicatifPays. Quand la plateforme servira plusieurs
   # pays, seule cette valeur changera de source (le pays du tenant).
   pays-defaut: "+221"
+  # L'adresse du front Angular : les liens envoyés par email (vérification de
+  # l'adresse) pointent vers ses pages. En production : FRONT_URL dans le .env.
+  front-url: ${FRONT_URL:http://localhost:4200}
   # Envoi réel des SMS par Twilio (CDC §4.10). Si enabled=false ou absent,
   # EnvoyeurSmsConsole prend le relais : les SMS finissent dans les logs et
   # l'application démarre sans compte Twilio.

@@ -14,12 +14,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -40,6 +42,9 @@ import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.onboarding.InvitationExpireeException;
 import com.samanatteu.exception.onboarding.InvitationRequiseException;
 import com.samanatteu.service.onboarding.InvitationService;
+import com.samanatteu.entity.abonnement.Formule;
+import com.samanatteu.repository.abonnement.FormuleRepository;
+import com.samanatteu.service.auth.VerificationEmailService;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
 import com.samanatteu.exception.utilisateur.EmailObligatoireException;
 import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
@@ -60,6 +65,10 @@ class UtilisateurServiceTest {
     // Faux par défaut, qui accepte tout jeton : chaque test qui veut un refus le dit.
     @Mock
     private InvitationService invitationService;
+    @Mock
+    private FormuleRepository formuleRepository;
+    @Mock
+    private VerificationEmailService verificationEmailService;
     // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
@@ -146,17 +155,34 @@ class UtilisateurServiceTest {
         assertEquals(RoleUtilisateur.MEMBRE, resultat.getRole());
     }
 
-    // Règle : une gestionnaire AVEC un email passe (et l'unicité est vérifiée).
+    // Règle : une gestionnaire AVEC un email et une formule passe. Inscrite seule
+    // (site public), son email n'est PAS encore vérifié, et le lien part avec la
+    // formule choisie.
     @Test
     void createUtilisateur_uneGestionnaireAvecEmail_estAcceptee() {
         when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        Formule pro = formule("PRO", "25000", true);
+        when(formuleRepository.findById(2L)).thenReturn(Optional.of(pro));
         connecterCommeAnonyme();
         CreationUtilisateurDTO dto = inscription(RoleUtilisateur.GESTIONNAIRE);
         dto.setEmail("gestionnaire@example.sn");
+        dto.setFormuleId(2L);
 
         UtilisateurDTO resultat = utilisateurService.createUtilisateur(dto);
 
         assertEquals("gestionnaire@example.sn", resultat.getEmail());
+        ArgumentCaptor<Utilisateur> enregistre = ArgumentCaptor.forClass(Utilisateur.class);
+        verify(utilisateurRepository).save(enregistre.capture());
+        assertFalse(enregistre.getValue().isEmailVerifie());
+        verify(verificationEmailService).envoyerLien(enregistre.getValue(), pro);
+    }
+
+    private Formule formule(String nom, String prix, boolean active) {
+        Formule formule = new Formule();
+        formule.setNom(nom);
+        formule.setPrixMensuel(new BigDecimal(prix));
+        formule.setActive(active);
+        return formule;
     }
 
     @Test

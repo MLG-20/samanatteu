@@ -29,6 +29,8 @@ import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 @Service
 public class AbonnementService {
 
+    public static final int DUREE_ESSAI_JOURS = 30;
+
     private final AbonnementRepository abonnementRepository;
     private final FormuleRepository formuleRepository;
     private final UtilisateurRepository utilisateurRepository;
@@ -92,6 +94,23 @@ public class AbonnementService {
         abonnement.setMoisCompteur(LocalDate.now().getMonthValue());
 
         return convertir(abonnementRepository.save(abonnement));
+    }
+
+    // L'essai gratuit, démarré quand la gestionnaire clique le lien de vérification :
+    // mêmes droits qu'ACTIF, sur la formule choisie à l'inscription.
+    public void demarrerEssai(Utilisateur cliente, Formule formule) {
+        Abonnement abonnement = abonnementRepository.findByUtilisateurId(cliente.getId())
+                .orElseGet(Abonnement::new);
+        abonnement.setUtilisateur(cliente);
+        abonnement.setFormule(formule);
+        abonnement.setStatut(StatutAbonnement.ESSAI);
+        abonnement.setDateDebut(LocalDate.now());
+        // Même règle que activer() : dateFin est le DERNIER jour couvert, donc
+        // 30 jours = aujourd'hui + 29.
+        abonnement.setDateFin(LocalDate.now().plusDays(DUREE_ESSAI_JOURS - 1));
+        abonnement.setSmsEnvoyesMois(0);
+        abonnement.setMoisCompteur(LocalDate.now().getMonthValue());
+        abonnementRepository.save(abonnement);
     }
 
     // L'abonnement d'une cliente (pour la route « mon abonnement »).

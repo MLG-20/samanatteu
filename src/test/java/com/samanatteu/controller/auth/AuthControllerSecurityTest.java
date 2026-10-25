@@ -26,6 +26,7 @@ import com.samanatteu.security.JwtAuthentificationEntryPoint;
 import com.samanatteu.security.JwtUtil;
 import com.samanatteu.service.auth.AuthService;
 import com.samanatteu.service.auth.MotDePasseOublieService;
+import com.samanatteu.service.auth.VerificationEmailService;
 
 // Règles d'ACCÈS sur les routes de mot de passe.
 // - /auth/mot-de-passe et /auth/deconnexion : il faut être connecté, quel que soit le rôle (pas de règle
@@ -49,6 +50,9 @@ class AuthControllerSecurityTest {
 
     @MockitoBean
     private MotDePasseOublieService motDePasseOublieService;
+
+    @MockitoBean
+    private VerificationEmailService verificationEmailService;
 
     @MockitoBean
     private JwtUtil jwtUtil;

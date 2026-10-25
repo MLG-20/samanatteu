@@ -38,6 +38,8 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll()
                                                 .requestMatchers(HttpMethod.POST, "/auth/mot-de-passe-oublie").permitAll()
                                                 .requestMatchers(HttpMethod.POST, "/auth/reinitialiser-mot-de-passe").permitAll()
+                                                .requestMatchers(HttpMethod.POST, "/auth/verifier-email").permitAll()
+                                                .requestMatchers(HttpMethod.POST, "/auth/renvoyer-verification").permitAll()
                                                 .requestMatchers(HttpMethod.POST, "/utilisateur").permitAll()
                                                 .requestMatchers(HttpMethod.GET, "/utilisateur").hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.PUT, "/utilisateur/**").authenticated()
