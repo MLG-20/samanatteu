@@ -132,10 +132,10 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `POST` | `/auth/deconnexion` | connecté | ferme **toutes** les sessions du compte : ses refresh tokens déjà émis sont refusés (`204`) |
 | `POST` | `/auth/mot-de-passe-oublie` | public | envoie par SMS un **code à 6 chiffres** valable 10 minutes au `telephone` donné ; répond toujours `204`, que le numéro ait un compte ou non |
 | `POST` | `/auth/reinitialiser-mot-de-passe` | public | choisit un nouveau mot de passe avec `telephone`, `code` et `nouveauMotDePasse` ; `204`, ou `400` « code invalide ou expiré » |
-| `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN`) |
-| `GET` | `/utilisateur` | `ADMIN` | liste des utilisateurs |
-| `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou tout profil si `ADMIN`) : `nom`, `prenom`, `email` uniquement |
-| `DELETE` | `/utilisateur/{id}` | `ADMIN` | supprimer un utilisateur |
+| `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN` ; un `ADMIN` ne crée pas de `MEMBRE` : `403`) |
+| `GET` | `/utilisateur` | `ADMIN` | les `GESTIONNAIRE` et les `ADMIN` **seulement** (aucun membre) ; chaque gestionnaire porte `nbMembres` (personnes distinctes de ses tontines, hors `SORTI`) |
+| `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou celui d'un gestionnaire ou d'un admin si `ADMIN` ; un `MEMBRE` : `403`) : `nom`, `prenom`, `email` uniquement |
+| `DELETE` | `/utilisateur/{id}` | `ADMIN` | supprimer un gestionnaire ou un admin (un `MEMBRE` : `403`) |
 
 ### Tontines (implémenté, testé)
 
@@ -496,8 +496,9 @@ Deux lectures qui répondent à « où en est la plateforme ? ». Même principe
 |---|---|---|---|
 | `GET` | `/dashboard/admin/utilisateurs` | `ADMIN` | `total` + détail par rôle : `nbAdmins`, `nbGestionnaires`, `nbMembres` (la somme vaut `total`) |
 | `GET` | `/dashboard/admin/tontines` | `ADMIN` | `total` + détail par statut : `nbEnAttente`, `nbActive`, `nbSuspendue`, `nbTerminee` (la somme vaut `total`) |
+| `GET` | `/dashboard/admin/gestionnaire/{id}` | `ADMIN` | la **fiche** d'un gestionnaire : identité, `abonnement` (ou `null`), `nbMembres` (distincts), `nbTontinesEnCours` (non `TERMINEE`), `tontines` (nom, statut, fréquence, `nbMembres` : **aucun montant**) ; `404` si l'id n'est pas celui d'un gestionnaire |
 
-Un `GESTIONNAIRE` ou un `MEMBRE` reçoit `403` sur ces deux routes.
+Un `GESTIONNAIRE` ou un `MEMBRE` reçoit `403` sur ces trois routes.
 
 ### Site public : réseaux, contact, à propos (implémenté, testé)
 
@@ -1238,6 +1239,32 @@ reste lisible.
   l'ouverture), et ce serait pareil en production sur un même domaine. Elle est devenue
   `/messageContact`. Trouvé sur une capture d'écran : les tests du back et du front passaient,
   chacun de son côté.
+- **Un seul compte SMS, celui de la plateforme ; le quota est une règle du backend.** Les
+  gestionnaires n'ont pas de compte chez le fournisseur (Twilio aujourd'hui) : la plateforme
+  achète les SMS et les revend en lot dans les formules (`smsParMois`). Chaque SMS déclenché par
+  une tontine est décompté de l'abonnement de **son** gestionnaire (`smsEnvoyesMois`, remis à
+  zéro quand `moisCompteur` change). Décidé avant de coder le décompte :
+  - **On compte les segments réels**, pas les messages : le fournisseur facture 160 caractères
+    par segment, 70 dès qu'un caractère sort de l'alphabet SMS de base (`ê`, `ô`, `’`…). Compter
+    les messages ferait payer la différence à la plateforme.
+  - **Quota épuisé : plus de SMS jusqu'au mois suivant, l'email part toujours**, la notification
+    est marquée comme telle, et le gestionnaire est prévenu à 80 % puis à 100 % pour changer de
+    formule. Pas de dépassement facturé : la plateforme avancerait l'argent au fournisseur.
+  - **Les SMS sans tontine (code « mot de passe oublié ») sont payés par la plateforme**, non
+    décomptés : un membre peut avoir plusieurs gestionnaires, aucun n'a déclenché ce SMS.
+  - **Le prix d'un SMS conditionne celui des formules.** À vérifier avant la mise en production :
+    si un SMS vers un `+221` coûte plus que `prix de la formule / smsParMois`, chaque client qui
+    utilise son quota fait perdre de l'argent. Un fournisseur local peut être moins cher ; changer
+    de fournisseur = une nouvelle implémentation d'`EnvoyeurSms`, sans toucher aux services.
+- **L'ADMIN ne voit aucun membre, seulement leur nombre par gestionnaire.** La règle était écrite
+  plus haut (« le tableau de bord de l'administrateur ne montrera aucun membre ») mais pas
+  appliquée : `GET /utilisateur` renvoyait `findAll()`, membres compris, avec téléphone et email,
+  et l'écran admin les listait. Corrigé côté **backend** (masquer dans le front aurait laissé les
+  données dans la réponse réseau) : la liste ne contient plus que les `GESTIONNAIRE` et les
+  `ADMIN`, chaque gestionnaire porte `nbMembres` (personnes distinctes hors `SORTI`, une requête
+  groupée), et un ADMIN reçoit `403` s'il crée, modifie ou supprime un `MEMBRE`. La fiche d'un
+  gestionnaire (`GET /dashboard/admin/gestionnaire/{id}`) liste ses tontines **sans argent** :
+  nom, statut, fréquence, nombre de membres.
 
 ### Bugs trouvés et corrigés
 
