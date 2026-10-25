@@ -26,6 +26,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.samanatteu.dto.dashboard.CotisationRetardDTO;
 import com.samanatteu.dto.dashboard.GainAVerserDTO;
+import com.samanatteu.dto.dashboard.MesMembresDTO;
 import com.samanatteu.dto.dashboard.PretEnCoursDTO;
 import com.samanatteu.dto.dashboard.TirageAFaireDTO;
 import com.samanatteu.dto.dashboard.TontineResumeDTO;
@@ -363,5 +364,20 @@ class DashboardServiceTest {
         assertMontant("7000", ligne.getMontantVerse());
         assertMontant("8000", ligne.getResteAVerser());
         assertEquals(StatutTirage.PARTIEL, ligne.getStatut());
+    }
+
+    // Carte « Membres » : 3 personnes pour 6 inscriptions (les mêmes dans deux
+    // tontines). Le chiffre principal est celui des PERSONNES, jamais une somme.
+    @Test
+    void mesMembres_distingueLesPersonnesDesInscriptions() {
+        when(participationRepository.compterMembresDistincts(GESTIONNAIRE, StatutParticipation.SORTI))
+                .thenReturn(3L);
+        when(participationRepository.countByTontineGestionnaireTelephoneAndStatutNot(GESTIONNAIRE,
+                StatutParticipation.SORTI)).thenReturn(6L);
+
+        MesMembresDTO resultat = dashboardService.mesMembres();
+
+        assertEquals(3L, resultat.nbMembres());
+        assertEquals(6L, resultat.nbInscriptions());
     }
 }

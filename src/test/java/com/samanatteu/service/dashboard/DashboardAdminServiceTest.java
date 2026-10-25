@@ -120,7 +120,8 @@ class DashboardAdminServiceTest {
         AbonnementDTO abonnement = new AbonnementDTO();
         abonnement.setFormule("PRO");
         when(abonnementService.abonnementDe(5L)).thenReturn(Optional.of(abonnement));
-        when(participationRepository.compterMembresDistincts(5L, StatutParticipation.SORTI)).thenReturn(15L);
+        when(participationRepository.compterMembresDistincts("+221770000005", StatutParticipation.SORTI))
+                .thenReturn(15L);
         when(participationRepository.compterMembresParTontine(5L, StatutParticipation.SORTI))
                 .thenReturn(List.of(new NbMembresParTontine(10L, 12L), new NbMembresParTontine(11L, 5L)));
         when(tontineRepository.findByGestionnaireIdOrderByCreatedAtDesc(5L)).thenReturn(List.of(

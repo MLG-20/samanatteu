@@ -57,15 +57,19 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
     List<NbMembresParTontine> compterMembresParTontine(@Param("gestionnaireId") Long gestionnaireId,
             @Param("exclu") StatutParticipation exclu);
 
-    // Le total de la fiche : personnes distinctes sur toutes les tontines d'UN
-    // gestionnaire (on ne peut pas additionner les lignes par tontine : un membre
-    // inscrit dans deux tontines serait compté deux fois).
+    // Personnes distinctes sur toutes les tontines d'UN gestionnaire (on ne peut
+    // pas additionner les lignes par tontine : un membre inscrit dans deux
+    // tontines serait compté deux fois). Une seule requête pour la fiche admin
+    // ET le tableau de bord du gestionnaire : les deux écrans disent le même chiffre.
     @Query("""
             select count(distinct p.membre.id)
             from Participation p
-            where p.tontine.gestionnaire.id = :gestionnaireId and p.statut <> :exclu
+            where p.tontine.gestionnaire.telephone = :telephone and p.statut <> :exclu
             """)
-    long compterMembresDistincts(@Param("gestionnaireId") Long gestionnaireId,
+    long compterMembresDistincts(@Param("telephone") String telephoneGestionnaire,
             @Param("exclu") StatutParticipation exclu);
+
+    // Les inscriptions (places) d'un gestionnaire : un membre dans deux tontines = 2.
+    long countByTontineGestionnaireTelephoneAndStatutNot(String telephone, StatutParticipation statut);
 
 }

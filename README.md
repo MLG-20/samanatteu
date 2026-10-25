@@ -489,6 +489,7 @@ jamais passé en paramètre, il est lu dans le token : on ne peut voir que **ses
 | Méthode | Route | Accès | Chaque ligne contient |
 |---|---|---|---|
 | `GET` | `/dashboard/gestionnaire/tontines` | `GESTIONNAIRE` | une tontine : statut, nombre de membres actifs, solde de la caisse de prêts, et pour le cycle en cours son numéro, le collecté et l'attendu (`null` s'il n'y a pas de cycle en cours) |
+| `GET` | `/dashboard/gestionnaire/membres` | `GESTIONNAIRE` | **un seul objet** : `nbMembres` (personnes distinctes hors `SORTI` : un membre dans deux tontines compte une fois, même chiffre que la fiche admin) et `nbInscriptions` (les places) |
 | `GET` | `/dashboard/gestionnaire/retards` | `GESTIONNAIRE` | une cotisation `EN_RETARD` : tontine, cycle, nom et téléphone du membre, `resteDu` (reste de la part + reste de la caisse) |
 | `GET` | `/dashboard/gestionnaire/prets` | `GESTIONNAIRE` | un prêt `ACTIF` ou `EN_RETARD` : membre, total à rendre (capital + intérêt), `resteARembourser`, date de la prochaine échéance, statut |
 | `GET` | `/dashboard/gestionnaire/tirages` | `GESTIONNAIRE` | un cycle **clôturé sans tirage** : le tirage à faire, avec la cagnotte collectée et attendue |

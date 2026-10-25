@@ -80,7 +80,8 @@ public class DashboardAdminService {
 
         // orElse(null) : pas d'abonnement n'est pas une erreur, la fiche le montre.
         fiche.setAbonnement(abonnementService.abonnementDe(id).orElse(null));
-        fiche.setNbMembres(participationRepository.compterMembresDistincts(id, StatutParticipation.SORTI));
+        fiche.setNbMembres(participationRepository.compterMembresDistincts(gestionnaire.getTelephone(),
+                StatutParticipation.SORTI));
 
         // Une requête pour les nombres de membres de toutes ses tontines, rangée en
         // Map tontineId -> nombre (même principe que la liste des gestionnaires).

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.samanatteu.dto.dashboard.CotisationRetardDTO;
 import com.samanatteu.dto.dashboard.GainAVerserDTO;
+import com.samanatteu.dto.dashboard.MesMembresDTO;
 import com.samanatteu.dto.dashboard.PretEnCoursDTO;
 import com.samanatteu.dto.dashboard.TirageAFaireDTO;
 import com.samanatteu.dto.dashboard.TontineResumeDTO;
@@ -68,6 +69,16 @@ public class DashboardService {
         return tontines.stream()
                 .map(this::resume)
                 .toList();
+    }
+
+    // Carte « Membres » : des personnes distinctes (hors SORTI), même requête
+    // que la fiche admin, et le nombre d'inscriptions pour comparer.
+    public MesMembresDTO mesMembres() {
+        String telephone = utilisateurConnecte.telephone();
+        return new MesMembresDTO(
+                participationRepository.compterMembresDistincts(telephone, StatutParticipation.SORTI),
+                participationRepository.countByTontineGestionnaireTelephoneAndStatutNot(telephone,
+                        StatutParticipation.SORTI));
     }
 
     // Bloc « Cotisations en retard » : le repository renvoie des entités

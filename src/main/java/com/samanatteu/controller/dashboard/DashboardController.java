@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.samanatteu.dto.dashboard.CotisationRetardDTO;
 import com.samanatteu.dto.dashboard.GainAVerserDTO;
+import com.samanatteu.dto.dashboard.MesMembresDTO;
 import com.samanatteu.dto.dashboard.PretEnCoursDTO;
 import com.samanatteu.dto.dashboard.TirageAFaireDTO;
 import com.samanatteu.dto.dashboard.TontineResumeDTO;
@@ -29,6 +30,12 @@ public class DashboardController {
     @GetMapping("/tontines")
     public List<TontineResumeDTO> mesTontines() {
         return dashboardService.mesTontines();
+    }
+
+    // Carte « Membres » : des personnes distinctes, pas une somme par tontine.
+    @GetMapping("/membres")
+    public MesMembresDTO mesMembres() {
+        return dashboardService.mesMembres();
     }
 
     // Bloc « Cotisations en retard » : qui relancer, et pour combien.
