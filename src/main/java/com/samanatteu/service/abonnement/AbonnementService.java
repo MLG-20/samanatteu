@@ -99,6 +99,11 @@ public class AbonnementService {
         return abonnementRepository.findByUtilisateurTelephone(telephone).map(this::convertir);
     }
 
+    // L'abonnement d'une cliente, par son id (fiche gestionnaire de l'ADMIN).
+    public Optional<AbonnementDTO> abonnementDe(Long utilisateurId) {
+        return abonnementRepository.findByUtilisateurId(utilisateurId).map(this::convertir);
+    }
+
     // Tous les abonnements : pour l'ADMIN.
     public List<AbonnementDTO> lister() {
         return abonnementRepository.findAllByOrderByDateFinAsc().stream()

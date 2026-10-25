@@ -1,9 +1,11 @@
 package com.samanatteu.controller.dashboard;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.samanatteu.dto.dashboard.FicheGestionnaireDTO;
 import com.samanatteu.dto.dashboard.TontinesStatsDTO;
 import com.samanatteu.dto.dashboard.UtilisateursStatsDTO;
 import com.samanatteu.service.dashboard.DashboardAdminService;
@@ -25,5 +27,11 @@ public class DashboardAdminController {
     @GetMapping("/tontines")
     public TontinesStatsDTO tontines() {
         return dashboardAdminService.statistiquesTontines();
+    }
+
+    // La fiche complète d'une gestionnaire (ADMIN : règle /dashboard/admin/** de SecurityConfig).
+    @GetMapping("/gestionnaire/{id}")
+    public FicheGestionnaireDTO ficheGestionnaire(@PathVariable Long id) {
+        return dashboardAdminService.ficheGestionnaire(id);
     }
 }

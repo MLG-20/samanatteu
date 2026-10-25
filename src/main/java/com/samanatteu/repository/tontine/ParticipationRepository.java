@@ -45,4 +45,27 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
             """)
     List<NbMembresParGestionnaire> compterMembresParGestionnaire(@Param("exclu") StatutParticipation exclu);
 
+    // Pour la fiche d'un gestionnaire (ADMIN) : le nombre de membres de chacune de
+    // ses tontines, en une requête. Une tontine sans membre n'a pas de ligne.
+    @Query("""
+            select new com.samanatteu.repository.tontine.NbMembresParTontine(
+                p.tontine.id, count(p))
+            from Participation p
+            where p.tontine.gestionnaire.id = :gestionnaireId and p.statut <> :exclu
+            group by p.tontine.id
+            """)
+    List<NbMembresParTontine> compterMembresParTontine(@Param("gestionnaireId") Long gestionnaireId,
+            @Param("exclu") StatutParticipation exclu);
+
+    // Le total de la fiche : personnes distinctes sur toutes les tontines d'UN
+    // gestionnaire (on ne peut pas additionner les lignes par tontine : un membre
+    // inscrit dans deux tontines serait compté deux fois).
+    @Query("""
+            select count(distinct p.membre.id)
+            from Participation p
+            where p.tontine.gestionnaire.id = :gestionnaireId and p.statut <> :exclu
+            """)
+    long compterMembresDistincts(@Param("gestionnaireId") Long gestionnaireId,
+            @Param("exclu") StatutParticipation exclu);
+
 }
