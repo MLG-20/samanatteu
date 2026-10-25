@@ -88,6 +88,32 @@ dossier**.
 L'API écoute sur `http://localhost:8080`. Pour un autre port :
 `./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=8081`.
 
+### Données de démonstration
+
+Le profil `demo` remplit une base **vide** au démarrage (`DemoSeeder`) : 1 admin, 3 gestionnaires
+(une par formule), 23 membres, 5 tontines dans tous les états (en préparation, actives avec
+retards, paiements partiels et gains à verser, terminée), 2 prêts (l'un à jour, l'autre en
+retard), le tout étalé sur quatre mois.
+
+```bash
+# 1. Vider les données (garde les formules et les paramètres du site). Irréversible : pg_dump avant.
+psql -h localhost -U samanatteu_user -d samanatteu -f scripts/vider-donnees.sql
+# 2. Démarrer avec le profil demo : le seed s'exécute, puis l'API sert normalement.
+./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
+```
+
+| Rôle | Compte | Téléphone |
+|---|---|---|
+| ADMIN | Admin Sarr | `770000090` |
+| GESTIONNAIRE | Aïssatou Ndiaye (PRO, 3 tontines) | `771000001` |
+| GESTIONNAIRE | Ousmane Fall (DÉCOUVERTE, 1 tontine) | `772000002` |
+| GESTIONNAIRE | Mariama Ba (MAX, 1 tontine) | `773000003` |
+| MEMBRE | Awa Diop (2 tontines) | `781000001` |
+
+Mot de passe de tous les comptes : `Demo2026!`. Les autres membres : `781000001` à `781000012`,
+`782000001` à `782000005`, `783000001` à `783000006`. Pendant le seed, SMS et emails partent
+vers la console (`application-demo.yaml`), jamais vers Twilio ni un serveur SMTP.
+
 ### Explorer l'API (Swagger)
 
 La doc se génère seule au démarrage : `http://localhost:8080/swagger-ui.html` (JSON brut :
@@ -1265,6 +1291,17 @@ reste lisible.
   groupée), et un ADMIN reçoit `403` s'il crée, modifie ou supprime un `MEMBRE`. La fiche d'un
   gestionnaire (`GET /dashboard/admin/gestionnaire/{id}`) liste ses tontines **sans argent** :
   nom, statut, fréquence, nombre de membres.
+- **Des données de démo créées par les vrais services, pas par du SQL écrit à la main.** La base
+  de travail s'était remplie de restes d'essais (27 comptes, des tontines incohérentes),
+  inutilisable pour une présentation. Elle a été sauvegardée (`pg_dump`, hors du dépôt), vidée
+  (`scripts/vider-donnees.sql`) et remplie par `DemoSeeder` (profil `demo`), qui se connecte tour
+  à tour comme l'admin et chaque gestionnaire et appelle les services : montants, caisse, cycles,
+  tirages et mots de passe sont donc calculés par le code métier, impossibles à rendre
+  incohérents. Les services datant tout d'« aujourd'hui », une dernière étape recale les dates en
+  SQL pour étaler l'histoire sur quatre mois. Le seed ne tourne que sur une base sans compte (il
+  n'écrase jamais rien) et dans **une seule transaction** (une erreur = rien d'écrit). Limites :
+  les gagnants changent à chaque seed (tirage au hasard), les notifications restent datées du
+  jour du seed.
 
 ### Bugs trouvés et corrigés
 
