@@ -1404,3 +1404,9 @@ reste lisible.
   possible de réactiver une tontine `TERMINEE`, censée être un état final. Le test correspondant
   est volontairement passé au rouge pour confirmer qu'il détectait bien le problème, avant d'être
   corrigé.
+- **Un numéro juste refusé à la connexion parce qu'il contenait des espaces.** « 77 000 00 90 »
+  était rejeté (le format local n'acceptait que des chiffres collés) et l'écran de connexion
+  affichait « téléphone ou mot de passe incorrect », ce qui cachait la vraie cause. Les espaces,
+  points et tirets sont maintenant retirés dans `TelephoneService.normaliser` : le point unique
+  d'entrée des numéros, donc la connexion, l'inscription, l'import et les invitations sont
+  corrigés d'un coup.

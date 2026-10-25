@@ -29,12 +29,17 @@ public class TelephoneService {
      * Normalise une saisie en E.164 : "771234566" ou "0771234566" ou "+221771234566" donnent
      * tous "+221771234566".
      *
+     * <p>Les séparateurs qu'un humain tape naturellement ("77 123 45 66", "77.123.45.66",
+     * "77-123-45-66") sont retirés d'abord : sans ça, la connexion répondait « téléphone ou mot
+     * de passe incorrect » à un numéro pourtant juste.
+     *
      * <p>À n'utiliser qu'aux ENTRÉES (inscription, connexion, import, invitation). Un numéro
      * lu en base est déjà en E.164 : le re-normaliser serait inutile, et le refuserait s'il
      * appartient à un autre pays.
      */
     public String normaliser(String saisie) {
-        return NumeroTelephone.local(saisie, indicatif).e164();
+        String sansSeparateurs = saisie == null ? null : saisie.replaceAll("[\\s.\\-]", "");
+        return NumeroTelephone.local(sansSeparateurs, indicatif).e164();
     }
 
     /** L'indicatif utilisé : "+221". */

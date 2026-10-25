@@ -39,6 +39,18 @@ class TelephoneServiceTest {
     }
 
     // Règle : un numéro illisible est refusé (400 via TelephoneInvalideException).
+    // Le bug trouvé à la connexion : "77 000 00 90" était refusé alors que le
+    // numéro est juste. Espaces, points et tirets sont des séparateurs humains.
+    @Test
+    void normaliser_retireLesSeparateurs() {
+        TelephoneService service = new TelephoneService("+221");
+
+        assertEquals("+221771234566", service.normaliser("77 123 45 66"));
+        assertEquals("+221771234566", service.normaliser("77.123.45.66"));
+        assertEquals("+221771234566", service.normaliser("77-123-45-66"));
+        assertEquals("+221771234566", service.normaliser("+221 77 123 45 66"));
+    }
+
     @Test
     void normaliser_refuseUnNumeroIllisible() {
         TelephoneService service = new TelephoneService("+221");
