@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -204,6 +205,44 @@ class AbonnementServiceTest {
         assertEquals("PRO", resultat.getFormule());
         assertTrue(resultat.getActif());
         assertEquals(LocalDate.now().plusMonths(1).minusDays(1), resultat.getDateFin());
+    }
+
+    // Règle : l'essai dure 30 jours (dateFin = aujourd'hui + 29, le dernier jour
+    // couvert), sur la formule donnée, et ouvre les mêmes droits qu'ACTIF.
+    @Test
+    void demarrerEssai_creeUnEssaiDe30JoursSurLaFormule() {
+        when(abonnementRepository.findByUtilisateurId(18L)).thenReturn(Optional.empty());
+
+        abonnementService.demarrerEssai(cliente(), formule("PRO", 10));
+
+        ArgumentCaptor<Abonnement> enregistre = ArgumentCaptor.forClass(Abonnement.class);
+        verify(abonnementRepository).save(enregistre.capture());
+        Abonnement essai = enregistre.getValue();
+        assertEquals(StatutAbonnement.ESSAI, essai.getStatut());
+        assertEquals("PRO", essai.getFormule().getNom());
+        assertEquals(LocalDate.now(), essai.getDateDebut());
+        assertEquals(LocalDate.now().plusDays(29), essai.getDateFin());
+        assertTrue(essai.estActif());
+    }
+
+    // Règle : un essai en cours donne le droit d'agir, comme un abonnement payé.
+    @Test
+    void exigerAbonnementActif_unEssaiEnCours_passe() {
+        Abonnement essai = abonnementActif(formule("PRO", 10));
+        essai.setStatut(StatutAbonnement.ESSAI);
+        when(abonnementRepository.findByUtilisateurTelephone(TELEPHONE)).thenReturn(Optional.of(essai));
+
+        assertDoesNotThrow(() -> abonnementService.exigerAbonnementActif(TELEPHONE));
+    }
+
+    // Règle : un essai terminé bloque, comme un abonnement expiré.
+    @Test
+    void exigerAbonnementActif_essaiTermine_estRefuse() {
+        Abonnement essai = abonnementExpire(formule("PRO", 10));
+        essai.setStatut(StatutAbonnement.ESSAI);
+        when(abonnementRepository.findByUtilisateurTelephone(TELEPHONE)).thenReturn(Optional.of(essai));
+
+        assertThrows(AbonnementInactifException.class, () -> abonnementService.exigerAbonnementActif(TELEPHONE));
     }
 
     // Règle : l'ADMIN voit QUI est la cliente (nom, téléphone, email) : sans

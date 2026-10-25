@@ -29,6 +29,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.samanatteu.dto.auth.ChangementMotDePasseDTO;
+import com.samanatteu.dto.auth.LoginDTO;
 import com.samanatteu.dto.auth.RefreshRequestDTO;
 import com.samanatteu.dto.auth.TokenDTO;
 import com.samanatteu.service.utilisateur.TelephoneService;
@@ -36,6 +37,8 @@ import com.samanatteu.entity.utilisateur.Utilisateur;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.auth.AncienMotDePasseIncorrectException;
+import com.samanatteu.exception.auth.EmailNonVerifieException;
+import com.samanatteu.exception.auth.IdentifiantsInvalidesException;
 import com.samanatteu.exception.auth.RefreshTokenInvalideException;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.JwtUtil;
@@ -245,5 +248,63 @@ class AuthServiceTest {
     void refresh_tokenIllisible_estRefuse() {
         assertThrows(RefreshTokenInvalideException.class,
                 () -> authService.refresh(demandeRefresh("pas-un-jwt")));
+    }
+
+    // ------------------------------------------------------------------- login
+
+    private LoginDTO connexionParEmail(String motDePasse) {
+        LoginDTO dto = new LoginDTO();
+        dto.setEmail("awa@example.sn");
+        dto.setMotDePasse(motDePasse);
+        return dto;
+    }
+
+    // Une gestionnaire inscrite par le site public, qui n'a pas encore cliqué le lien.
+    private Utilisateur gestionnaireNonVerifiee() {
+        Utilisateur gestionnaire = compte("motdepasse123");
+        gestionnaire.setEmail("awa@example.sn");
+        gestionnaire.setRole(RoleUtilisateur.GESTIONNAIRE);
+        gestionnaire.setEmailVerifie(false);
+        return gestionnaire;
+    }
+
+    // Règle : un compte vérifié reçoit ses deux tokens.
+    @Test
+    void login_compteVerifie_renvoieLesTokens() {
+        Utilisateur gestionnaire = gestionnaireNonVerifiee();
+        gestionnaire.setEmailVerifie(true);
+        when(utilisateurRepository.findByEmail("awa@example.sn")).thenReturn(Optional.of(gestionnaire));
+
+        TokenDTO tokens = authService.login(connexionParEmail("motdepasse123"));
+
+        assertTrue(tokens.getAccessToken() != null && tokens.getRefreshToken() != null);
+    }
+
+    // Règle : bon mot de passe mais email non vérifié = connexion refusée par
+    // l'exception propre (403), que le front reconnaît pour proposer le renvoi.
+    @Test
+    void login_emailNonVerifie_estRefuse() {
+        // Construit AVANT when(...) : compte() appelle le spy passwordEncoder, et
+        // Mockito refuse un autre appel de spy au milieu d'un when(...) inachevé.
+        Utilisateur gestionnaire = gestionnaireNonVerifiee();
+        when(utilisateurRepository.findByEmail("awa@example.sn")).thenReturn(Optional.of(gestionnaire));
+
+        assertThrows(EmailNonVerifieException.class,
+                () -> authService.login(connexionParEmail("motdepasse123")));
+
+        verify(jwtUtil, never()).generateToken(any());
+    }
+
+    // Règle : avec un MAUVAIS mot de passe, rien ne dit que le compte existe et
+    // attend sa vérification : c'est le refus habituel (401).
+    @Test
+    void login_emailNonVerifieEtMauvaisMotDePasse_donneLeRefusHabituel() {
+        // Construit AVANT when(...) : compte() appelle le spy passwordEncoder, et
+        // Mockito refuse un autre appel de spy au milieu d'un when(...) inachevé.
+        Utilisateur gestionnaire = gestionnaireNonVerifiee();
+        when(utilisateurRepository.findByEmail("awa@example.sn")).thenReturn(Optional.of(gestionnaire));
+
+        assertThrows(IdentifiantsInvalidesException.class,
+                () -> authService.login(connexionParEmail("mauvaispasse")));
     }
 }

@@ -43,6 +43,10 @@ import com.samanatteu.exception.onboarding.InvitationExpireeException;
 import com.samanatteu.exception.onboarding.InvitationRequiseException;
 import com.samanatteu.service.onboarding.InvitationService;
 import com.samanatteu.entity.abonnement.Formule;
+import com.samanatteu.exception.abonnement.FormuleIntrouvableException;
+import com.samanatteu.exception.abonnement.FormuleNonDisponibleException;
+import com.samanatteu.exception.abonnement.FormuleObligatoireException;
+import com.samanatteu.exception.abonnement.FormuleSurDevisException;
 import com.samanatteu.repository.abonnement.FormuleRepository;
 import com.samanatteu.service.auth.VerificationEmailService;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
@@ -183,6 +187,75 @@ class UtilisateurServiceTest {
         formule.setPrixMensuel(new BigDecimal(prix));
         formule.setActive(active);
         return formule;
+    }
+
+    // Une gestionnaire qui s'inscrit seule, avec un email : seule la formule varie.
+    private CreationUtilisateurDTO gestionnairePublique(Long formuleId) {
+        connecterCommeAnonyme();
+        CreationUtilisateurDTO dto = inscription(RoleUtilisateur.GESTIONNAIRE);
+        dto.setEmail("gestionnaire@example.sn");
+        dto.setFormuleId(formuleId);
+        return dto;
+    }
+
+    // Règle : inscrite par le site public, une gestionnaire DOIT choisir une
+    // formule (son essai démarrera dessus).
+    @Test
+    void createUtilisateur_uneGestionnaireSansFormule_estRefusee() {
+        assertThrows(FormuleObligatoireException.class,
+                () -> utilisateurService.createUtilisateur(gestionnairePublique(null)));
+
+        verify(utilisateurRepository, never()).save(any());
+        verifyNoInteractions(verificationEmailService);
+    }
+
+    @Test
+    void createUtilisateur_uneFormuleInconnue_estRefusee() {
+        when(formuleRepository.findById(9L)).thenReturn(Optional.empty());
+
+        assertThrows(FormuleIntrouvableException.class,
+                () -> utilisateurService.createUtilisateur(gestionnairePublique(9L)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    // Règle : une formule retirée de la vente ne se choisit plus.
+    @Test
+    void createUtilisateur_uneFormuleRetiree_estRefusee() {
+        when(formuleRepository.findById(2L)).thenReturn(Optional.of(formule("PRO", "25000", false)));
+
+        assertThrows(FormuleNonDisponibleException.class,
+                () -> utilisateurService.createUtilisateur(gestionnairePublique(2L)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    // Règle : une formule à 0 (« sur devis ») passe par la page Contact.
+    @Test
+    void createUtilisateur_uneFormuleSurDevis_estRefusee() {
+        when(formuleRepository.findById(3L)).thenReturn(Optional.of(formule("MAX", "0", true)));
+
+        assertThrows(FormuleSurDevisException.class,
+                () -> utilisateurService.createUtilisateur(gestionnairePublique(3L)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    // Règle : créée par l'ADMIN, une gestionnaire est vérifiée d'office, sans
+    // formule ni lien (l'ADMIN active son abonnement à part).
+    @Test
+    void createUtilisateur_uneGestionnaireCreeeParLAdmin_estVerifieeDOffice() {
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        connecterCommeAdmin();
+        CreationUtilisateurDTO dto = inscription(RoleUtilisateur.GESTIONNAIRE);
+        dto.setEmail("gestionnaire@example.sn");
+
+        utilisateurService.createUtilisateur(dto);
+
+        ArgumentCaptor<Utilisateur> enregistre = ArgumentCaptor.forClass(Utilisateur.class);
+        verify(utilisateurRepository).save(enregistre.capture());
+        assertTrue(enregistre.getValue().isEmailVerifie());
+        verifyNoInteractions(formuleRepository, verificationEmailService);
     }
 
     @Test

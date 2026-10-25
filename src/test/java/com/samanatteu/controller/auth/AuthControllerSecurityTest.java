@@ -168,6 +168,51 @@ class AuthControllerSecurityTest {
         verifyNoInteractions(motDePasseOublieService);
     }
 
+    // ------------------------------------------------- vérification de l'email
+
+    // Publique : celle qui clique le lien n'a pas encore de token (sa connexion
+    // est justement refusée tant qu'elle n'a pas cliqué).
+    @Test
+    void verifierEmail_sansToken_donne204() throws Exception {
+        mockMvc.perform(post("/auth/verifier-email").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"jeton": "jeton-du-lien"}
+                        """))
+                .andExpect(status().isNoContent());
+
+        verify(verificationEmailService).verifier("jeton-du-lien");
+    }
+
+    @Test
+    void verifierEmail_sansJeton_donne400() throws Exception {
+        mockMvc.perform(post("/auth/verifier-email").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(verificationEmailService);
+    }
+
+    @Test
+    void renvoyerVerification_sansToken_donne204() throws Exception {
+        mockMvc.perform(post("/auth/renvoyer-verification").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email": "awa@example.sn"}
+                        """))
+                .andExpect(status().isNoContent());
+
+        verify(verificationEmailService).renvoyer(any());
+    }
+
+    // Ni email ni téléphone : refusé avant le service, avec le message du DTO.
+    @Test
+    void renvoyerVerification_sansIdentifiant_donne400() throws Exception {
+        mockMvc.perform(post("/auth/renvoyer-verification").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.identifiantFourni")
+                        .value("Il faut fournir un email ou un numéro de téléphone."));
+
+        verifyNoInteractions(verificationEmailService);
+    }
+
     // -------------------------------------------------------------- déconnexion
 
     // Pour se déconnecter il faut être connecté : la route n'est pas publique.
