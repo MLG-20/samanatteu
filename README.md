@@ -158,7 +158,7 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 | `POST` | `/auth/deconnexion` | connecté | ferme **toutes** les sessions du compte : ses refresh tokens déjà émis sont refusés (`204`) |
 | `POST` | `/auth/mot-de-passe-oublie` | public | envoie par SMS un **code à 6 chiffres** valable 10 minutes au `telephone` donné ; répond toujours `204`, que le numéro ait un compte ou non |
 | `POST` | `/auth/reinitialiser-mot-de-passe` | public | choisit un nouveau mot de passe avec `telephone`, `code` et `nouveauMotDePasse` ; `204`, ou `400` « code invalide ou expiré » |
-| `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN` ; un `ADMIN` ne crée pas de `MEMBRE` : `403`) |
+| `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN` ; un `ADMIN` ne crée pas de `MEMBRE` : `403`). Un **visiteur** ne devient `MEMBRE` qu'avec `jetonInvitation` (le jeton du lien `/rejoindre/{jeton}`, valide, et le numéro invité si l'invitation est nominative) : sinon `403` ; une gestionnaire connectée crée ses membres sans jeton |
 | `GET` | `/utilisateur` | `ADMIN` | les `GESTIONNAIRE` et les `ADMIN` **seulement** (aucun membre) ; chaque gestionnaire porte `nbMembres` (personnes distinctes de ses tontines, hors `SORTI`) |
 | `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou celui d'un gestionnaire ou d'un admin si `ADMIN` ; un `MEMBRE` : `403`) : `nom`, `prenom`, `email` uniquement |
 | `DELETE` | `/utilisateur/{id}` | `ADMIN` | supprimer un gestionnaire ou un admin (un `MEMBRE` : `403`) |
@@ -1303,6 +1303,16 @@ reste lisible.
   n'écrase jamais rien) et dans **une seule transaction** (une erreur = rien d'écrit). Limites :
   les gagnants changent à chaque seed (tirage au hasard), les notifications restent datées du
   jour du seed.
+- **On ne devient membre que sur invitation.** La page d'inscription proposait « Je cotise » à
+  tout visiteur : il obtenait un compte membre… sur un espace vide, puisqu'on ne rejoint pas une
+  tontine sans y être invité. Le front ne propose plus que l'espace gestionnaire au public (avec
+  un encart qui renvoie les membres vers leur lien ou vers « première connexion »), et l'API
+  ferme la porte pour de bon : un visiteur qui s'inscrit comme `MEMBRE` doit présenter le jeton
+  d'un lien valide (`InvitationService.verifierPourInscription`, mêmes contrôles que
+  `/rejoindre`, plus le numéro invité pour une invitation nominative, vérifié **après**
+  normalisation). L'inscription ne consomme pas l'invitation : c'est toujours `/rejoindre` qui
+  inscrit dans la tontine. Les autres voies ne changent pas : une gestionnaire connectée ajoute
+  ses membres, l'import crée les comptes.
 
 ### Bugs trouvés et corrigés
 
