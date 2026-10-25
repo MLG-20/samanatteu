@@ -1,7 +1,9 @@
 package com.samanatteu.service.utilisateur;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -10,11 +12,14 @@ import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.ModificationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
 import com.samanatteu.exception.utilisateur.EmailObligatoireException;
 import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
+import com.samanatteu.repository.tontine.NbMembresParGestionnaire;
+import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
@@ -25,19 +30,40 @@ public class UtilisateurService {
     private final UtilisateurRepository utilisateurRepository;
     private final UtilisateurConnecte utilisateurConnecte;
     private final TelephoneService telephoneService;
+    private final ParticipationRepository participationRepository;
 
     public UtilisateurService(UtilisateurRepository utilisateurRepository, PasswordEncoder passwordEncoder,
-            UtilisateurConnecte utilisateurConnecte, TelephoneService telephoneService) {
+            UtilisateurConnecte utilisateurConnecte, TelephoneService telephoneService,
+            ParticipationRepository participationRepository) {
         this.utilisateurRepository = utilisateurRepository;
         this.passwordEncoder = passwordEncoder;
         this.utilisateurConnecte = utilisateurConnecte;
         this.telephoneService = telephoneService;
+        this.participationRepository = participationRepository;
     }
 
+    // La liste de l'ADMIN : les GESTIONNAIRE et les ADMIN seulement. Les membres sont les
+    // clients des gestionnaires, pas de la plateforme : aucun nom, téléphone ni email de
+    // membre ne sort d'ici (frontière SaaS). D'un gestionnaire, on donne juste son nombre
+    // de membres distincts (hors SORTI).
     public List<UtilisateurDTO> listUtilisateurs() {
-        return utilisateurRepository.findAll()
+        // Une requête pour tous les gestionnaires, rangée en Map gestionnaireId -> nombre.
+        Map<Long, Long> nbMembres = participationRepository
+                .compterMembresParGestionnaire(StatutParticipation.SORTI)
                 .stream()
-                .map(this::convertiUtilisateurDTO)
+                .collect(Collectors.toMap(NbMembresParGestionnaire::gestionnaireId,
+                        NbMembresParGestionnaire::nbMembres));
+
+        return utilisateurRepository.findByRoleNot(RoleUtilisateur.MEMBRE)
+                .stream()
+                .map(utilisateur -> {
+                    UtilisateurDTO dto = convertiUtilisateurDTO(utilisateur);
+                    if (utilisateur.getRole() == RoleUtilisateur.GESTIONNAIRE) {
+                        // Pas de ligne dans la Map = aucun membre inscrit.
+                        dto.setNbMembres(nbMembres.getOrDefault(utilisateur.getId(), 0L));
+                    }
+                    return dto;
+                })
                 .toList();
     }
 
@@ -47,6 +73,11 @@ public class UtilisateurService {
         // numéro est mal écrit : le 400 viendrait après, et seulement s'il a le droit.
         // Seul un ADMIN peut créer un autre ADMIN (la route d'inscription est publique).
         if (dto.getRole() == RoleUtilisateur.ADMIN && !utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
+            throw new AccesRefuseException();
+        }
+        // Un ADMIN ne crée pas de MEMBRE : un membre s'inscrit lui-même (route publique)
+        // ou est ajouté par son gestionnaire. La plateforme ne gère pas les membres.
+        if (dto.getRole() == RoleUtilisateur.MEMBRE && utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
             throw new AccesRefuseException();
         }
         // Le numéro saisi est normalisé en E.164 : "775550000" et "+221775550000" sont
@@ -90,6 +121,11 @@ public class UtilisateurService {
                     !utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
                 throw new AccesRefuseException();
             }
+            // Le compte d'un MEMBRE ne regarde que lui (et son gestionnaire) : l'ADMIN
+            // n'y touche pas, même s'il connaît son id.
+            if (utilisateur.getRole() == RoleUtilisateur.MEMBRE && utilisateurConnecte.aLeRole(RoleUtilisateur.ADMIN)) {
+                throw new AccesRefuseException();
+            }
 
             // En base, "pas d'email" s'écrit toujours null, jamais "" : sinon deux comptes
             // sans email entreraient en conflit sur la contrainte d'unicité.
@@ -109,12 +145,18 @@ public class UtilisateurService {
         });
     }
 
+    // Route réservée à l'ADMIN (SecurityConfig) : il supprime des gestionnaires ou des
+    // admins, jamais un MEMBRE (403). false = compte inexistant (404).
     public boolean deleteUtilisateur(Long id) {
-        if (utilisateurRepository.existsById(id)) {
-            utilisateurRepository.deleteById(id);
-            return true;
+        Optional<Utilisateur> utilisateur = utilisateurRepository.findById(id);
+        if (utilisateur.isEmpty()) {
+            return false;
         }
-        return false;
+        if (utilisateur.get().getRole() == RoleUtilisateur.MEMBRE) {
+            throw new AccesRefuseException();
+        }
+        utilisateurRepository.deleteById(id);
+        return true;
     }
 
     private UtilisateurDTO convertiUtilisateurDTO(Utilisateur utilisateur) {

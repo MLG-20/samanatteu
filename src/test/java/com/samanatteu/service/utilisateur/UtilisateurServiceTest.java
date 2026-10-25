@@ -2,6 +2,7 @@ package com.samanatteu.service.utilisateur;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,11 +32,14 @@ import com.samanatteu.dto.utilisateur.CreationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.ModificationUtilisateurDTO;
 import com.samanatteu.dto.utilisateur.UtilisateurDTO;
 import com.samanatteu.entity.utilisateur.Utilisateur;
+import com.samanatteu.enums.tontine.StatutParticipation;
 import com.samanatteu.enums.utilisateur.RoleUtilisateur;
 import com.samanatteu.exception.AccesRefuseException;
 import com.samanatteu.exception.utilisateur.EmailDejaUtiliseException;
 import com.samanatteu.exception.utilisateur.EmailObligatoireException;
 import com.samanatteu.exception.utilisateur.TelephoneDejaUtiliseException;
+import com.samanatteu.repository.tontine.NbMembresParGestionnaire;
+import com.samanatteu.repository.tontine.ParticipationRepository;
 import com.samanatteu.repository.utilisateur.UtilisateurRepository;
 import com.samanatteu.security.UtilisateurConnecte;
 
@@ -46,6 +50,8 @@ class UtilisateurServiceTest {
     private UtilisateurRepository utilisateurRepository;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private ParticipationRepository participationRepository;
     // Un vrai objet (pas un faux) : il lit le SecurityContextHolder rempli par connecterComme...().
     @Spy
     private UtilisateurConnecte utilisateurConnecte = new UtilisateurConnecte();
@@ -275,5 +281,105 @@ class UtilisateurServiceTest {
 
         assertNull(resultat.getEmail());
         verify(utilisateurRepository, never()).existsByEmail(anyString());
+    }
+
+    // ------------------------------------------- frontière ADMIN / membres
+
+    private Utilisateur compteEnBase(Long id, RoleUtilisateur role) {
+        Utilisateur compte = new Utilisateur();
+        compte.setId(id);
+        compte.setNom("Sarr");
+        compte.setPrenom("Fatou");
+        compte.setTelephone("+22177000000" + id);
+        compte.setEmail("compte" + id + "@mail.sn");
+        compte.setRole(role);
+        compte.setActif(true);
+        return compte;
+    }
+
+    // Règle : la liste de l'ADMIN ne contient AUCUN membre (la requête les exclut,
+    // findAll n'est plus appelé). Chaque gestionnaire porte son nombre de membres ;
+    // celui qui n'a pas de ligne dans le comptage en a 0 ; un ADMIN n'en a pas (null).
+    @Test
+    void listUtilisateurs_exclutLesMembres_etCompteLesMembresDeChaqueGestionnaire() {
+        Utilisateur avecMembres = compteEnBase(1L, RoleUtilisateur.GESTIONNAIRE);
+        Utilisateur sansMembre = compteEnBase(2L, RoleUtilisateur.GESTIONNAIRE);
+        Utilisateur admin = compteEnBase(3L, RoleUtilisateur.ADMIN);
+        when(utilisateurRepository.findByRoleNot(RoleUtilisateur.MEMBRE))
+                .thenReturn(List.of(avecMembres, sansMembre, admin));
+        when(participationRepository.compterMembresParGestionnaire(StatutParticipation.SORTI))
+                .thenReturn(List.of(new NbMembresParGestionnaire(1L, 12L)));
+
+        List<UtilisateurDTO> liste = utilisateurService.listUtilisateurs();
+
+        assertEquals(3, liste.size());
+        assertEquals(12L, liste.get(0).getNbMembres());
+        assertEquals(0L, liste.get(1).getNbMembres());
+        assertNull(liste.get(2).getNbMembres());
+        verify(utilisateurRepository, never()).findAll();
+    }
+
+    @Test
+    void createUtilisateur_refuseUnMembreCreeParUnAdmin() {
+        connecterCommeAdmin();
+
+        assertThrows(AccesRefuseException.class,
+                () -> utilisateurService.createUtilisateur(inscription(RoleUtilisateur.MEMBRE)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    @Test
+    void updateUtilisateur_refuseUnMembreModifieParUnAdmin() {
+        when(utilisateurRepository.findById(17L)).thenReturn(Optional.of(membreEnBase("771234566", null)));
+        connecterCommeAdmin();
+
+        assertThrows(AccesRefuseException.class,
+                () -> utilisateurService.updateUtilisateur(17L, modifications("Ndiaye", "Awa", null)));
+
+        verify(utilisateurRepository, never()).save(any());
+    }
+
+    // L'ADMIN garde la main sur ses clientes : modifier une gestionnaire reste permis.
+    @Test
+    void updateUtilisateur_accepteUneGestionnaireModifieeParUnAdmin() {
+        when(utilisateurRepository.findById(1L))
+                .thenReturn(Optional.of(compteEnBase(1L, RoleUtilisateur.GESTIONNAIRE)));
+        when(utilisateurRepository.save(any(Utilisateur.class))).thenAnswer(appel -> appel.getArgument(0));
+        connecterCommeAdmin();
+
+        UtilisateurDTO resultat = utilisateurService
+                .updateUtilisateur(1L, modifications("Sarr", "Fatou", "fatou@mail.sn")).orElseThrow();
+
+        assertEquals("fatou@mail.sn", resultat.getEmail());
+    }
+
+    @Test
+    void deleteUtilisateur_refuseUnMembre() {
+        when(utilisateurRepository.findById(17L)).thenReturn(Optional.of(membreEnBase("771234566", null)));
+
+        assertThrows(AccesRefuseException.class, () -> utilisateurService.deleteUtilisateur(17L));
+
+        verify(utilisateurRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void deleteUtilisateur_supprimeUneGestionnaire() {
+        when(utilisateurRepository.findById(1L))
+                .thenReturn(Optional.of(compteEnBase(1L, RoleUtilisateur.GESTIONNAIRE)));
+
+        assertTrue(utilisateurService.deleteUtilisateur(1L));
+
+        verify(utilisateurRepository).deleteById(1L);
+    }
+
+    // Compte inexistant : false (le contrôleur en fait un 404), rien n'est supprimé.
+    @Test
+    void deleteUtilisateur_renvoieFalseSiInexistant() {
+        when(utilisateurRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertFalse(utilisateurService.deleteUtilisateur(99L));
+
+        verify(utilisateurRepository, never()).deleteById(any());
     }
 }

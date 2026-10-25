@@ -1,5 +1,6 @@
 package com.samanatteu.repository.utilisateur;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,4 +19,7 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long> 
     Optional<Utilisateur> findByTelephone(String telephone);
 
     Long countByRole(RoleUtilisateur role);
+
+    // Tous les comptes SAUF ceux de ce rôle (… WHERE role <> ?).
+    List<Utilisateur> findByRoleNot(RoleUtilisateur role);
 }

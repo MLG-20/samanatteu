@@ -39,4 +39,8 @@ public class UtilisateurDTO {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    // Rempli seulement dans la liste de l'ADMIN, pour un GESTIONNAIRE : le nombre de
+    // membres distincts de ses tontines (un nombre, jamais la liste). null ailleurs.
+    private Long nbMembres;
 }

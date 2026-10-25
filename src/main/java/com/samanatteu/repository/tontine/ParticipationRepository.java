@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.samanatteu.entity.tontine.Participation;
 import com.samanatteu.enums.tontine.StatutParticipation;
@@ -28,5 +30,19 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
 
     // COUNT(*) côté base : on récupère un nombre, pas la liste des participants.
     long countByTontineIdAndStatut(Long tontineId, StatutParticipation statut);
+
+    // Pour l'ADMIN : le nombre de membres de chaque gestionnaire, sans jamais charger
+    // les membres eux-mêmes (ni nom, ni téléphone, ni email : frontière SaaS).
+    // count(distinct …) : un membre inscrit dans deux tontines du même gestionnaire
+    // compte une fois. Une seule requête groupée pour tous les gestionnaires (pas une
+    // par ligne). Un gestionnaire sans aucun membre n'a pas de ligne : 0 par défaut.
+    @Query("""
+            select new com.samanatteu.repository.tontine.NbMembresParGestionnaire(
+                p.tontine.gestionnaire.id, count(distinct p.membre.id))
+            from Participation p
+            where p.statut <> :exclu
+            group by p.tontine.gestionnaire.id
+            """)
+    List<NbMembresParGestionnaire> compterMembresParGestionnaire(@Param("exclu") StatutParticipation exclu);
 
 }
