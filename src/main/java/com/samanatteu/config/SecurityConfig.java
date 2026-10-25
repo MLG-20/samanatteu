@@ -84,6 +84,15 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/formule", "/formule/**").hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.POST, "/formule").hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.PUT, "/formule/**").hasRole("ADMIN")
+                                                // Le site public : tout le monde le lit (footer, pages
+                                                // Contact et À propos), seul l'ADMIN le modifie.
+                                                .requestMatchers(HttpMethod.GET, "/site").permitAll()
+                                                .requestMatchers(HttpMethod.PUT, "/site").hasRole("ADMIN")
+                                                // Le formulaire de contact (pas "/contact" : c'est l'adresse de la PAGE
+                                                // côté front). Un visiteur envoie, l'ADMIN
+                                                // lit, marque lu et supprime.
+                                                .requestMatchers(HttpMethod.POST, "/messageContact").permitAll()
+                                                .requestMatchers("/messageContact", "/messageContact/**").hasRole("ADMIN")
                                                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                                                 .anyRequest().authenticated())

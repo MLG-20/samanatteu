@@ -499,6 +499,32 @@ Deux lectures qui répondent à « où en est la plateforme ? ». Même principe
 
 Un `GESTIONNAIRE` ou un `MEMBRE` reçoit `403` sur ces deux routes.
 
+### Site public : réseaux, contact, à propos (implémenté, testé)
+
+La vitrine du front (footer, pages Contact et À propos) est **pilotée par l'ADMIN**, sans
+redéployer. Les paramètres tiennent en **une seule ligne** (`parametre_site`, `CHECK (id = 1)`) ;
+un champ vide (`null`) n'est pas affiché.
+
+| Méthode | Route | Accès | Rôle |
+|---|---|---|---|
+| `GET` | `/site` | public | les 7 réseaux (URL), les coordonnées de contact, l'accroche et les 3 blocs « À propos » |
+| `PUT` | `/site` | `ADMIN` | remplace tous les paramètres ; un lien de réseau doit commencer par `https://` (`400` sinon) |
+
+### Formulaire de contact (implémenté, testé)
+
+Un visiteur, même sans compte, écrit à la plateforme ; l'ADMIN lit les messages dans son
+back-office. L'API ne s'appelle pas `/contact` : c'est l'adresse de la **page** côté front.
+
+| Méthode | Route | Accès | Rôle |
+|---|---|---|---|
+| `POST` | `/messageContact` | public | envoie un message (`204`) : nom, sujet et message obligatoires, **téléphone ou email** (au moins l'un des deux, `400` sinon) |
+| `GET` | `/messageContact` | `ADMIN` | les messages, les plus récents d'abord |
+| `PUT` | `/messageContact/{id}/lu?valeur=true` | `ADMIN` | marque lu (`valeur=false` : non lu) |
+| `DELETE` | `/messageContact/{id}` | `ADMIN` | supprime le message (`404` s'il n'existe pas) |
+
+Anti-robot : un champ caché `siteWeb` (« pot de miel »). Rempli, le message est ignoré **sans
+erreur**, pour que le robot croie avoir réussi.
+
 ### Codes d'erreur
 
 Les erreurs métier renvoient un message lisible et un code HTTP cohérent :
@@ -1192,6 +1218,26 @@ reste lisible.
   retirées de la vente, reste réservé à l'ADMIN : la règle publique est placée avant
   `/formule/**`, car Spring Security applique la première règle qui correspond. Un test de
   sécurité vérifie que l'ouverture de l'une n'ouvre pas l'autre.
+
+- **Le site public est une donnée, dans une table à une seule ligne.** Réseaux sociaux,
+  coordonnées et textes « À propos » changent sans redéployer, comme les formules. Ils tiennent
+  dans `parametre_site`, dont la base interdit une deuxième ligne (`CHECK (id = 1)`) : il n'y a
+  jamais de question « quels paramètres s'appliquent ? ». Les messages du formulaire, eux, sont
+  une autre table (`message_contact`) : des paramètres se remplacent, des messages s'ajoutent.
+- **Un lien de réseau doit commencer par `https://`.** Il finit dans un `<a href>` du footer : un
+  lien `javascript:...` y exécuterait du code chez chaque visiteur qui clique. La règle est dans
+  le DTO (`@Pattern`), pas seulement dans le formulaire Angular, qui peut être contourné.
+- **Téléphone ou email : vérifié dans le service ET par la base.** Une annotation ne porte que
+  sur un champ ; la règle « au moins l'un des deux » est donc vérifiée dans
+  `MessageContactService` (un `400` lisible), avec une contrainte `CHECK` en dernier rempart.
+- **Un « pot de miel » plutôt qu'un captcha.** Le formulaire de contact est public : un champ
+  caché, que seuls les robots remplissent, fait ignorer le message sans le dire. Rien à résoudre
+  pour l'humain. Pas encore de limite de débit : à ajouter si des spams passent.
+- **Une URL de page et une URL d'API ne se ressemblent jamais.** L'API du formulaire s'appelait
+  d'abord `/contact`, comme la page du front : le proxy envoyait la page au back (`401` à
+  l'ouverture), et ce serait pareil en production sur un même domaine. Elle est devenue
+  `/messageContact`. Trouvé sur une capture d'écran : les tests du back et du front passaient,
+  chacun de son côté.
 
 ### Bugs trouvés et corrigés
 
