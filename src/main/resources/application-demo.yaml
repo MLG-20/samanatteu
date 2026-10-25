@@ -1,0 +1,12 @@
+# Profil « demo » : remplit une base VIDE avec des données de démonstration
+# (DemoSeeder), au démarrage. Lancer avec :
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
+# Pendant le seed, des centaines de notifications partent (bienvenue, paiements,
+# tirages) : vers la console, jamais vers Twilio ni un serveur SMTP, puisque les
+# numéros et les emails sont fictifs.
+samanatteu:
+  mail:
+    enabled: false
+  sms:
+    twilio:
+      enabled: false
