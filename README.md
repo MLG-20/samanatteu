@@ -151,14 +151,16 @@ Toutes les routes sont en JSON. Les routes protégées demandent l'en-tête
 
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
-| `POST` | `/auth/login` | public | connexion par **email ou téléphone** |
+| `POST` | `/auth/login` | public | connexion par **email ou téléphone** ; `401` identifiants faux, **`403`** bon mot de passe mais email pas encore confirmé (gestionnaire inscrite par le site public) |
 | `GET` | `/auth/me` | connecté | l'utilisateur porté par le token (id, nom, prénom, téléphone, email, rôle) : le front en a besoin pour afficher le bon tableau de bord |
 | `POST` | `/auth/refresh` | public | échange un refresh token contre une nouvelle paire de tokens |
 | `PUT` | `/auth/mot-de-passe` | connecté | changer **son propre** mot de passe : `ancienMotDePasse` (preuve d'identité) et `nouveauMotDePasse` (8 caractères au moins) ; `204`, ou `400` si l'ancien est faux |
 | `POST` | `/auth/deconnexion` | connecté | ferme **toutes** les sessions du compte : ses refresh tokens déjà émis sont refusés (`204`) |
 | `POST` | `/auth/mot-de-passe-oublie` | public | envoie par SMS un **code à 6 chiffres** valable 10 minutes au `telephone` donné ; répond toujours `204`, que le numéro ait un compte ou non |
+| `POST` | `/auth/verifier-email` | public | le clic sur le lien reçu par email : `jeton` ; email confirmé + **essai gratuit de 30 jours** sur la formule choisie (`204`) ; `400` « lien plus valable » (inconnu, expiré après 24 h, déjà utilisé, compte déjà confirmé) |
+| `POST` | `/auth/renvoyer-verification` | public | un nouveau lien, à partir de `email` ou `telephone` ; répond **toujours** `204` (compte inconnu, déjà confirmé, ou demande moins d'une minute après la précédente : rien ne part) |
 | `POST` | `/auth/reinitialiser-mot-de-passe` | public | choisit un nouveau mot de passe avec `telephone`, `code` et `nouveauMotDePasse` ; `204`, ou `400` « code invalide ou expiré » |
-| `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN` ; un `ADMIN` ne crée pas de `MEMBRE` : `403`). Un **visiteur** ne devient `MEMBRE` qu'avec `jetonInvitation` (le jeton du lien `/rejoindre/{jeton}`, valide, et le numéro invité si l'invitation est nominative) : sinon `403` ; une gestionnaire connectée crée ses membres sans jeton |
+| `POST` | `/utilisateur` | public | inscription (créer un `ADMIN` exige un token `ADMIN` ; un `ADMIN` ne crée pas de `MEMBRE` : `403`). Une gestionnaire qui s'inscrit seule (site public) envoie `formuleId` (obligatoire : `400` ; inconnue `404` ; retirée `409` ; « sur devis », prix 0 : `400`) et reçoit un lien de confirmation par email : elle ne peut pas se connecter avant de l'avoir cliqué. Un **visiteur** ne devient `MEMBRE` qu'avec `jetonInvitation` (le jeton du lien `/rejoindre/{jeton}`, valide, et le numéro invité si l'invitation est nominative) : sinon `403` ; une gestionnaire connectée crée ses membres sans jeton |
 | `GET` | `/utilisateur` | `ADMIN` | les `GESTIONNAIRE` et les `ADMIN` **seulement** (aucun membre) ; chaque gestionnaire porte `nbMembres` (personnes distinctes de ses tontines, hors `SORTI`) |
 | `PUT` | `/utilisateur/{id}` | connecté | modifier **son propre** profil (ou celui d'un gestionnaire ou d'un admin si `ADMIN` ; un `MEMBRE` : `403`) : `nom`, `prenom`, `email` uniquement |
 | `DELETE` | `/utilisateur/{id}` | `ADMIN` | supprimer un gestionnaire ou un admin (un `MEMBRE` : `403`) |
@@ -561,7 +563,7 @@ Les erreurs métier renvoient un message lisible et un code HTTP cohérent :
 |---|---|---|
 | `400` | requête incomplète ou valeur invalide | nombre de parts à 0, membre sans id |
 | `401` | non authentifié / token invalide ou expiré | token absent |
-| `403` | authentifié mais pas autorisé | un `MEMBRE` qui active une tontine |
+| `403` | authentifié mais pas autorisé | un `MEMBRE` qui active une tontine ; à la connexion : email pas encore confirmé |
 | `404` | ressource ou route introuvable | tontine inexistante |
 | `405` | méthode HTTP non prise en charge par la route | `POST /tirage` |
 | `409` | l'état actuel de la ressource bloque l'action | modifier une tontine `ACTIVE`, réactiver une tontine `TERMINEE` |
@@ -699,6 +701,7 @@ private String genererToken() {
   `CotisationServiceTest`, `TirageServiceTest`, `PretServiceTest`, `EcheancePretServiceTest`,
   `TransactionServiceTest`, `InvitationServiceTest`, `NotificationServiceTest`,
   `ImportMembreServiceTest`, `AuthServiceTest`, `MotDePasseOublieServiceTest`,
+  `VerificationEmailServiceTest`, `AbonnementServiceTest`,
   `DashboardServiceTest`, `DashboardMembreServiceTest`, `DashboardAdminServiceTest` :
   règles métier des services avec des faux repositories (Mockito) — propriété, cycle de vie du
   statut, doublons, valeurs décidées par le serveur, identité issue du token, lecture filtrée par
@@ -1313,6 +1316,24 @@ reste lisible.
   normalisation). L'inscription ne consomme pas l'invitation : c'est toujours `/rejoindre` qui
   inscrit dans la tontine. Les autres voies ne changent pas : une gestionnaire connectée ajoute
   ses membres, l'import crée les comptes.
+- **Une gestionnaire s'inscrit seule : formule choisie, email vérifié, 30 jours d'essai.**
+  Jusque-là, une inscription donnait un compte sans abonnement, que l'ADMIN devait activer avant
+  toute tontine. Désormais la gestionnaire choisit sa formule sur la vitrine, reçoit un lien par
+  email et ne peut pas se connecter avant de l'avoir cliqué ; le clic démarre un abonnement
+  `ESSAI` de 30 jours sur cette formule (mêmes droits qu'`ACTIF`, `dateFin` = J+29, dernier jour
+  couvert). Choix faits : l'essai démarre **au clic** et non à l'inscription (un compte jamais
+  confirmé ne consomme rien) ; la formule voyage **avec le lien** (table `verification_email`),
+  pas sur le compte ; une formule à prix 0 (« sur devis ») ne s'achète pas en ligne, le bouton
+  mène à la page Contact ; à la fin de l'essai, l'ADMIN active l'abonnement à réception du
+  paiement (le paiement en ligne viendra plus tard). Sécurité : le jeton (256 bits) n'est jamais
+  en base, seulement son empreinte **SHA-256** (et non BCrypt, dont le sel aléatoire empêcherait
+  de retrouver la ligne) ; lien valable 24 h, à usage unique, refusé aussi si le compte est déjà
+  confirmé (sinon chaque ancien lien relancerait 30 jours) ; un seul message pour tous les refus ;
+  « Renvoyer l'email » répond toujours `204` et n'envoie qu'un email par minute. La connexion
+  refusée l'est en **`403` après le contrôle du mot de passe** : seul le titulaire apprend que son
+  compte attend une confirmation, et le front distingue ce cas du `401` pour proposer le renvoi.
+  Les comptes créés par l'ADMIN ou par le seeder sont confirmés d'office (`email_verifie`
+  `DEFAULT true` dans `V12`).
 
 ### Bugs trouvés et corrigés
 
@@ -1479,6 +1500,12 @@ reste lisible.
   possible de réactiver une tontine `TERMINEE`, censée être un état final. Le test correspondant
   est volontairement passé au rouge pour confirmer qu'il détectait bien le problème, avant d'être
   corrigé.
+- **Le revenu mensuel de l'admin comptait les essais gratuits.** Avec le statut `ESSAI`, un
+  abonnement peut être « actif » sans rien rapporter ; l'écran Abonnements additionnait pourtant
+  le prix de tous les abonnements actifs. Corrigé : seul le statut `ACTIF` compte dans le revenu,
+  et l'état affiché vient d'une seule fonction (`etatAbonnement` côté front : Essai gratuit,
+  Essai terminé, Actif, Expiré…), au lieu d'une expression recopiée dans chaque écran — qui
+  affichait d'ailleurs « Résilié » pour un abonnement simplement arrivé à sa date de fin.
 - **Un numéro juste refusé à la connexion parce qu'il contenait des espaces.** « 77 000 00 90 »
   était rejeté (le format local n'acceptait que des chiffres collés) et l'écran de connexion
   affichait « téléphone ou mot de passe incorrect », ce qui cachait la vraie cause. Les espaces,

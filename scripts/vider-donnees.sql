@@ -23,5 +23,6 @@ TRUNCATE TABLE
     invitation,
     import_membres,
     code_reinitialisation,
+    verification_email,
     message_contact
 RESTART IDENTITY CASCADE;
